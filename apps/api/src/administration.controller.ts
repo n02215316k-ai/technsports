@@ -17,6 +17,7 @@ class PlayerDto{@IsString() @Length(2,120) legalName!:string;@IsOptional() @IsSt
 class PlayerRegistrationDto{@IsString() playerId!:string;@IsString() teamId!:string;@IsString() seasonId!:string;@IsOptional() @IsInt() @Min(1) @Max(99) shirtNumber?:number;@IsDateString() startsAt!:string;@IsOptional() @IsDateString() endsAt?:string}
 class FixtureUpdateDto{@IsOptional() @IsDateString() kickoffAt?:string;@IsOptional() @IsString() round?:string;@IsOptional() @IsString() venueName?:string;@IsOptional() @IsString() venueId?:string;@IsOptional() @IsIn(['SCHEDULED','LIVE','SUSPENDED','POSTPONED','ABANDONED','FINISHED']) status?:'SCHEDULED'|'LIVE'|'SUSPENDED'|'POSTPONED'|'ABANDONED'|'FINISHED';@IsOptional() @IsInt() @Min(0) homeScore?:number;@IsOptional() @IsInt() @Min(0) awayScore?:number}
 class LineupDto{@IsString() teamId!:string;@IsArray() @IsString({each:true}) playerIds!:string[]}
+class AssignmentDto{@IsString() matchId!:string;@IsString() userId!:string;@IsIn(['LINEUPS','TIMELINE','PLAYER_ACTIONS','TEAM_STATS','MEDIA']) scope!:'LINEUPS'|'TIMELINE'|'PLAYER_ACTIONS'|'TEAM_STATS'|'MEDIA'}
 class ResolveIdentityDto{@IsString() playerId!:string}
 class RejectDto{@IsOptional() @IsString() reason?:string}
 
@@ -52,6 +53,7 @@ export class AdministrationController {
   @Post('fixtures') fixture(@Body() dto:FixtureDto){return this.admin.createFixture(dto)}
   @Post('fixtures/:id') updateFixture(@Param('id') id:string,@Body() dto:FixtureUpdateDto){return this.admin.updateFixture(id,dto)}
   @Post('fixtures/:id/lineups') lineup(@Param('id') id:string,@Body() dto:LineupDto){return this.admin.setLineup(id,dto)}
+  @Post('assignments') assignment(@Body() dto:AssignmentDto){return this.admin.assignCollector(dto)}
   @Post('articles') article(@Body() dto:ArticleDto){return this.admin.createArticle(dto)}
   @Get('review') review(){return this.admin.reviewQueue()}
   @Post('review/observations/:id/approve') approveObservation(@Param('id') id:string){return this.admin.approveObservation(id)}

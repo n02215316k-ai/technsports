@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarPlus, CheckCircle2, Database, ImageUp, ListChecks, MapPin, ShieldAlert, Trophy, UserPlus, Users } from 'lucide-react';
+import { CalendarPlus, CheckCircle2, ClipboardCheck, Database, ImageUp, ListChecks, MapPin, ShieldAlert, Trophy, UserPlus, Users } from 'lucide-react';
 
 type Season={id:string;label:string;startsAt:string;endsAt:string;competitionId:string};
 type Competition={id:string;name:string;countryCode:string;seasons:Season[]};
@@ -10,6 +10,7 @@ type Venue={id:string;name:string;city:string};
 type Player={id:string;legalName:string;knownAs?:string;position:string;registrations?:{team:Team;seasonId:string;shirtNumber?:number}[]};
 type Fixture={id:string;seasonId:string;round?:string;status:string;homeScore:number;awayScore:number;kickoffAt:string;homeTeam:Team;awayTeam:Team;venue?:Venue;participants?:{player:Player;team:Team;source:string;confirmed:boolean}[]};
 type Registration={team:Team};
+type User={id:string;displayName:string;username:string;email:string;role:string};
 
 export default function AdminPage(){
   const api=process.env.NEXT_PUBLIC_API_URL||'http://localhost:4000/api/v1';
@@ -19,6 +20,7 @@ export default function AdminPage(){
   const [venues,setVenues]=useState<Venue[]>([]);
   const [players,setPlayers]=useState<Player[]>([]);
   const [fixtures,setFixtures]=useState<Fixture[]>([]);
+  const [users,setUsers]=useState<User[]>([]);
   const [seasonId,setSeasonId]=useState('');
   const [registered,setRegistered]=useState<Registration[]>([]);
   const [crestUrl,setCrestUrl]=useState('');
@@ -44,6 +46,7 @@ export default function AdminPage(){
 
   useEffect(()=>{load()},[load]);
   useEffect(()=>{if(!seasonId){setRegistered([]);return}fetch(`${api}/catalog/seasons/${seasonId}/teams`,{credentials:'include'}).then(r=>r.json()).then(setRegistered).catch(()=>setRegistered([]))},[api,seasonId]);
+  useEffect(()=>{fetch(`${api}/admin/users`,{credentials:'include',headers:key?{'x-admin-key':key}:{}}).then(r=>r.ok?r.json():[]).then(setUsers).catch(()=>setUsers([]))},[api,key,notice]);
 
   const post=async(path:string,body:unknown)=>{
     setError('');setNotice('');
@@ -92,6 +95,16 @@ export default function AdminPage(){
       </form>
       <LineupForm fixtures={fixtures} players={players} teamsForFixture={selectedFixtureTeams} onSubmit={(fixtureId,teamId,playerIds)=>post(`/admin/fixtures/${fixtureId}/lineups`,{teamId,playerIds}).then(()=>load()).then(()=>setNotice('Confirmed lineup saved')).catch(e=>setError(e instanceof Error?e.message:'Could not save lineup'))}/>
     </div></section>
+
+    <section className="admin-section"><div className="records-heading"><div><span className="eyebrow">COLLECTOR NETWORK</span><h2>Assign data collection work</h2></div></div>
+      <form className="ops-card assignment-card" onSubmit={e=>handle(e,async f=>{await post('/admin/assignments',{matchId:f.get('matchId'),userId:f.get('userId'),scope:f.get('scope')})},'Collector assignment saved')}>
+        <h3><ClipboardCheck/> Match assignment</h3>
+        <label>Fixture<select name="matchId" required defaultValue=""><option value="" disabled>Select fixture</option>{fixtures.map(f=><option value={f.id} key={f.id}>{f.homeTeam.name} v {f.awayTeam.name} · {new Date(f.kickoffAt).toLocaleDateString('en-ZW')}</option>)}</select></label>
+        <label>Collector<select name="userId" required defaultValue=""><option value="" disabled>Select user</option>{users.filter(user=>user.role!=='SUPPORTER').map(user=><option value={user.id} key={user.id}>@{user.username} · {user.displayName} · {user.role}</option>)}</select><small>Use User roles to promote a supporter before assigning match work.</small></label>
+        <label>Collection scope<select name="scope" defaultValue="TIMELINE"><option>LINEUPS</option><option>TIMELINE</option><option>PLAYER_ACTIONS</option><option>TEAM_STATS</option><option>MEDIA</option></select></label>
+        <button disabled={!fixtures.length||!users.some(user=>user.role!=='SUPPORTER')}>Assign collector</button>
+      </form>
+    </section>
   </main>
 }
 

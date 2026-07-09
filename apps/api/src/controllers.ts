@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
-import { Prisma, SubmissionStatus } from '@prisma/client';
+import { MatchStatus, Prisma, SubmissionStatus } from '@prisma/client';
 import { IsInt, IsObject, IsOptional, IsString, Min } from 'class-validator';
 import { ConsensusService, Observation as ConsensusObservation } from './consensus.service';
 import { PrismaService } from './prisma.service';
@@ -25,6 +25,35 @@ export class ContributionsController {
   constructor(private readonly consensus:ConsensusService,private readonly identities:IdentityService,private readonly events:EventValidationService,private readonly db:PrismaService){}
   @Post() @UseGuards(RoleGuard) @RequireRoles('COLLECTOR','REVIEWER','EDITOR','ADMIN')
   async submit(@Param('matchId')matchId:string,@Body()dto:SubmitObservationDto,@Req()request:any){const contributorId=request.user.id;const duplicate=await this.db.observation.findUnique({where:{contributorId_clientEventId:{contributorId,clientEventId:dto.clientEventId}}});if(duplicate)return{matchId,collectorId:contributorId,observationId:duplicate.id,status:'DUPLICATE',idempotent:true};const payload=this.events.validate(dto.eventType,dto.payload);const requiresPlayer=this.events.requiresPlayer(dto.eventType);const identity=requiresPlayer?await this.identities.resolve({matchId,playerId:dto.playerId,unlistedPlayerName:dto.unlistedPlayerName,teamId:dto.teamId}):{subjectId:`team:${String(payload.team)}`,playerId:undefined,identityStatus:'TEAM_EVENT' as const,identityClaim:undefined};const peers=await this.db.observation.findMany({where:{matchId,eventType:dto.eventType,subjectId:identity.subjectId,matchSecond:{gte:Math.max(0,dto.matchSecond-10),lte:dto.matchSecond+10}}});const observation:ConsensusObservation={eventType:dto.eventType,matchSecond:dto.matchSecond,payload,contributorId,clientEventId:dto.clientEventId,matchId,subjectId:identity.subjectId};const score=this.consensus.score(observation,peers.map(item=>({eventType:item.eventType,matchSecond:item.matchSecond,payload:item.payload as Record<string,unknown>,contributorId:item.contributorId,clientEventId:item.clientEventId,matchId:item.matchId,subjectId:item.subjectId??undefined})));const status=score.publishable?SubmissionStatus.CONSENSUS:score.conflictingSources?SubmissionStatus.CONFLICT:SubmissionStatus.PENDING;const saved=await this.db.$transaction(async tx=>{const created=await tx.observation.create({data:{matchId,contributorId,eventType:dto.eventType,subjectId:identity.subjectId,playerId:identity.playerId,identityClaimId:identity.identityClaim?.id,matchSecond:dto.matchSecond,payload:payload as Prisma.InputJsonValue,clientEventId:dto.clientEventId,clientRecordedAt:new Date(),status}});let factId:string|undefined;if(score.publishable){const fact=await tx.matchFact.create({data:{matchId,factType:dto.eventType,subjectId:identity.subjectId,matchSecond:dto.matchSecond,value:payload as Prisma.InputJsonValue,confidence:score.confidence,sourceCount:score.agreeingSources,publishedAt:new Date()}});factId=fact.id}return{created,factId}});return{matchId,collectorId:contributorId,observationId:saved.created.id,factId:saved.factId,status,idempotent:false,playerId:identity.playerId,subjectId:identity.subjectId,identityStatus:identity.identityStatus,...score}}
+}
+
+@Controller('contributor')
+@UseGuards(RoleGuard)
+@RequireRoles('COLLECTOR','REVIEWER','EDITOR','ADMIN')
+export class ContributorWorkspaceController {
+  constructor(private readonly db:PrismaService){}
+  @Get('assignments')
+  async assignments(@Req() request:any){
+    const userId=request.user.id;
+    const assignments=await this.db.assignment.findMany({where:{userId},include:{match:{include:{homeTeam:true,awayTeam:true,venue:true,season:{include:{competition:true}},_count:{select:{observations:true}}}}},orderBy:{match:{kickoffAt:'asc'}},take:100});
+    return assignments.map(item=>({...item,observations:item.match._count.observations}));
+  }
+  @Get('matches')
+  async matches(@Query('seasonId')seasonId?:string){
+    const matches=await this.db.match.findMany({
+      where:{seasonId,status:{in:[MatchStatus.SCHEDULED,MatchStatus.LIVE,MatchStatus.SUSPENDED]}},
+      include:{
+        homeTeam:true,
+        awayTeam:true,
+        venue:true,
+        season:{include:{competition:true}},
+        assignments:{include:{user:{select:{id:true,username:true,displayName:true,role:true}}}}
+      },
+      orderBy:{kickoffAt:'asc'},
+      take:120
+    });
+    return matches;
+  }
 }
 
 @Controller('statistics')

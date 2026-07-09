@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { HealthController, MatchesController, ContributionsController, StatisticsController } from './controllers';
+import { HealthController, MatchesController, ContributionsController, StatisticsController, ContributorWorkspaceController } from './controllers';
 import { ConsensusService } from './consensus.service';
 import { StatisticsService } from './statistics.service';
 import { IdentityService } from './identity.service';
@@ -18,5 +18,5 @@ import { APP_GUARD } from '@nestjs/core';
 import { PublicDataController } from './public-data.controller';
 import { PublicDataService } from './public-data.service';
 
-@Module({ imports:[ThrottlerModule.forRoot([{ttl:60000,limit:120}])],controllers: [HealthController, AuthController, PublicDataController, MatchesController, ContributionsController, StatisticsController, TransferContributionController, AdministrationController, CatalogController], providers: [AuthService, EmailService, AssetService, PublicDataService, RoleGuard, ConsensusService, StatisticsService, IdentityService, EventValidationService, TransferContributionService, AdministrationService, PrismaService, AdminKeyGuard,{provide:APP_GUARD,useClass:ThrottlerGuard}] })
+@Module({ imports:[ThrottlerModule.forRoot([{ttl:60000,limit:120}])],controllers: [HealthController, AuthController, PublicDataController, MatchesController, ContributionsController, ContributorWorkspaceController, StatisticsController, TransferContributionController, AdministrationController, CatalogController], providers: [AuthService, EmailService, AssetService, PublicDataService, RoleGuard, ConsensusService, StatisticsService, IdentityService, EventValidationService, TransferContributionService, AdministrationService, PrismaService, AdminKeyGuard,{provide:APP_GUARD,useClass:ThrottlerGuard}] })
 export class AppModule {}
