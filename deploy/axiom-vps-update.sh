@@ -34,13 +34,13 @@ git checkout "$BRANCH"
 git pull --ff-only origin "$BRANCH"
 
 echo "Building and restarting containers..."
-docker compose -f "$COMPOSE_FILE_PATH" build
-docker compose -f "$COMPOSE_FILE_PATH" up -d
+docker compose --env-file .env -f "$COMPOSE_FILE_PATH" build
+docker compose --env-file .env -f "$COMPOSE_FILE_PATH" up -d
 
 echo "Running database migrations..."
-docker compose -f "$COMPOSE_FILE_PATH" exec -T api npx prisma migrate deploy
+docker compose --env-file .env -f "$COMPOSE_FILE_PATH" exec -T api npx prisma migrate deploy
 
 echo "Current TechnSports containers:"
-docker compose -f "$COMPOSE_FILE_PATH" ps
+docker compose --env-file .env -f "$COMPOSE_FILE_PATH" ps
 
 echo "Deployment update complete."

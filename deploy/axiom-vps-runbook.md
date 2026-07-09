@@ -61,9 +61,9 @@ git clone YOUR_GITHUB_REPOSITORY_URL technsports
 cd technsports
 cp ../technsports.manual-backup-*/.env .env
 chmod +x deploy/axiom-vps-update.sh
-docker compose -f deploy/axiom-vps.docker-compose.yml build
-docker compose -f deploy/axiom-vps.docker-compose.yml up -d
-docker compose -f deploy/axiom-vps.docker-compose.yml exec -T api npx prisma migrate deploy
+docker compose --env-file .env -f deploy/axiom-vps.docker-compose.yml build
+docker compose --env-file .env -f deploy/axiom-vps.docker-compose.yml up -d
+docker compose --env-file .env -f deploy/axiom-vps.docker-compose.yml exec -T api npx prisma migrate deploy
 ```
 
 For every later release:
