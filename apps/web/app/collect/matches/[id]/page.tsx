@@ -37,6 +37,8 @@ export default function CollectorConsole(){
   const [fouledPlayer,setFouledPlayer]=useState('takunda-benhura');
   const [foulType,setFoulType]=useState('TACKLE');
   const [duration,setDuration]=useState(20);
+  const [attendance,setAttendance]=useState(0);
+  const [attendanceSource,setAttendanceSource]=useState('OFFICIAL');
   const [x,setX]=useState(50);
   const [y,setY]=useState(50);
   const [isPenalty,setIsPenalty]=useState(false);
@@ -52,7 +54,7 @@ export default function CollectorConsole(){
   const teamPlayers=participants.filter(player=>player.teamId===team);
   const requiresPlayer=playerEvents.includes(eventType);
   const authorised=Boolean(user&&collectorRoles.includes(user.role));
-  const payload=()=>{const base={team};switch(eventType){case'GOAL':return{...base,scoringMethod:method,distanceMeters:distance,isPenalty};case'SHOT':return{...base,scoringMethod:method,distanceMeters:distance,outcome};case'TOUCH':return{...base,x,y};case'FREE_KICK':return{...base,distanceMeters:distance,outcome};case'CORNER':return{...base,side};case'FOUL':return{...base,fouledPlayerId:fouledPlayer,foulType};case'PENALTY':return{...base,scoringMethod:'RIGHT_FOOT',outcome};case'SUBSTITUTION':return{...base,playerOnId:playerOn,playerOffId:playerOff};case'POSSESSION_INTERVAL':return{...base,durationSeconds:duration};default:return base}};
+  const payload=()=>{const base={team};switch(eventType){case'GOAL':return{...base,scoringMethod:method,distanceMeters:distance,isPenalty};case'SHOT':return{...base,scoringMethod:method,distanceMeters:distance,outcome};case'TOUCH':return{...base,x,y};case'FREE_KICK':return{...base,distanceMeters:distance,outcome};case'CORNER':return{...base,side};case'FOUL':return{...base,fouledPlayerId:fouledPlayer,foulType};case'PENALTY':return{...base,scoringMethod:'RIGHT_FOOT',outcome};case'SUBSTITUTION':return{...base,playerOnId:playerOn,playerOffId:playerOff};case'POSSESSION_INTERVAL':return{...base,durationSeconds:duration};case'MATCH_ATTENDANCE':return{attendance,source:attendanceSource};default:return base}};
   const submit=async(e:FormEvent)=>{e.preventDefault();if(!user||!authorised){setError('Sign in with a collector account before submitting match data.');return}setSending(true);setError('');try{const identity=requiresPlayer?(playerId==='__unlisted__'?{unlistedPlayerName:unlistedName,teamId:team}:{playerId}):{};const response=await submitOrQueue(`${api}/matches/${id}/observations`,{contributorId:user.id,eventType,matchSecond:minute*60,payload:payload(),clientEventId:`${user.id}-${id}-${eventKey}`,...identity});setResult(response as Result)}catch(reason){setError(reason instanceof Error?reason.message:'Submission failed')}finally{setSending(false)}};
   const playerOptions=(value:string,setter:(value:string)=>void,label:string)=><label>{label}<select value={value} onChange={e=>setter(e.target.value)}>{teamPlayers.map(player=><option key={player.id} value={player.id}>{player.name}</option>)}</select></label>;
 
@@ -76,9 +78,9 @@ export default function CollectorConsole(){
 
     <div className="collector-layout"><form className="collector-form" onSubmit={submit}>
       <div className="collector-form-heading wide"><span>NEW OBSERVATION</span><small>{home} vs {away} · {id}</small></div>
-      <label>Event type<select value={eventType} onChange={e=>{setEventType(e.target.value);setResult(null)}}><option>GOAL</option><option>SHOT</option><option>TOUCH</option><option>FREE_KICK</option><option>CORNER</option><option>FOUL</option><option>PENALTY</option><option>YELLOW_CARD</option><option>RED_CARD</option><option>SUBSTITUTION</option><option>POSSESSION_INTERVAL</option></select></label>
+      <label>Event type<select value={eventType} onChange={e=>{setEventType(e.target.value);setResult(null)}}><option>GOAL</option><option>SHOT</option><option>TOUCH</option><option>FREE_KICK</option><option>CORNER</option><option>FOUL</option><option>PENALTY</option><option>YELLOW_CARD</option><option>RED_CARD</option><option>SUBSTITUTION</option><option>POSSESSION_INTERVAL</option><option>MATCH_ATTENDANCE</option></select></label>
       <label>Match minute<input type="number" min="0" max="130" value={minute} onChange={e=>setMinute(Number(e.target.value))}/></label>
-      <label>Team<select value={team} onChange={e=>{setTeam(e.target.value);setPlayerId('')}}><option value="home">{home}</option><option value="away">{away}</option></select></label>
+      {eventType!=='MATCH_ATTENDANCE'&&<label>Team<select value={team} onChange={e=>{setTeam(e.target.value);setPlayerId('')}}><option value="home">{home}</option><option value="away">{away}</option></select></label>}
       {requiresPlayer&&<label>Primary player<select required value={playerId} onChange={e=>setPlayerId(e.target.value)}><option value="">Select player</option>{teamPlayers.map(player=><option key={player.id} value={player.id}>{player.shirtNumber?`${player.shirtNumber} · `:''}{player.name} · {player.position}</option>)}<option value="__unlisted__">Player not listed…</option></select></label>}
       {playerId==='__unlisted__'&&requiresPlayer&&<label className="wide claim-field">Unlisted player name<input required value={unlistedName} onChange={e=>setUnlistedName(e.target.value)}/></label>}
       {['GOAL','SHOT'].includes(eventType)&&<><label>Method<select value={method} onChange={e=>setMethod(e.target.value)}><option>RIGHT_FOOT</option><option>LEFT_FOOT</option><option>HEAD</option><option>OTHER</option></select></label><label>Distance (metres)<input type="number" min="0" max="100" value={distance} onChange={e=>setDistance(Number(e.target.value))}/></label></>}
@@ -89,6 +91,7 @@ export default function CollectorConsole(){
       {eventType==='FOUL'&&<>{playerOptions(fouledPlayer,setFouledPlayer,'Player fouled')}<label>Foul type<select value={foulType} onChange={e=>setFoulType(e.target.value)}><option>TRIP</option><option>PUSH</option><option>HANDBALL</option><option>TACKLE</option><option>HOLDING</option><option>OTHER</option></select></label></>}
       {eventType==='TOUCH'&&<><label>Pitch X (0–100)<input type="number" min="0" max="100" value={x} onChange={e=>setX(Number(e.target.value))}/></label><label>Pitch Y (0–100)<input type="number" min="0" max="100" value={y} onChange={e=>setY(Number(e.target.value))}/></label></>}
       {eventType==='POSSESSION_INTERVAL'&&<label>Possession duration (seconds)<input type="number" min="1" max="600" value={duration} onChange={e=>setDuration(Number(e.target.value))}/></label>}
+      {eventType==='MATCH_ATTENDANCE'&&<><label>Attendance<input type="number" min="0" max="200000" value={attendance} onChange={e=>setAttendance(Number(e.target.value))}/></label><label>Attendance source<select value={attendanceSource} onChange={e=>setAttendanceSource(e.target.value)}><option>OFFICIAL</option><option>ESTIMATE</option><option>MEDIA</option><option>CLUB</option></select></label></>}
       {eventType==='SUBSTITUTION'&&<>{playerOptions(playerOn,setPlayerOn,'Player on')}{playerOptions(playerOff,setPlayerOff,'Player off')}</>}
       <label className="wide">Event reference<input required value={eventKey} onChange={e=>setEventKey(e.target.value)}/><small>Use the same reference when another collector reports this exact event.</small></label>
       <button className="primary" disabled={sending||!authorised} type="submit"><Send/>{sending?'Submitting…':'Submit observation'}</button>

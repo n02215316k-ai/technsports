@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 @Injectable()
 export class AssetService {
-  saveImage(file:any,folder:'covers'|'team-logos'){
+  saveImage(file:any,folder:'covers'|'team-logos'|'player-faces'){
     if(!file?.buffer)throw new BadRequestException('Image file is required');
     if(file.size>5*1024*1024)throw new BadRequestException('Image must not exceed 5 MB');
     const extension=this.extension(file.buffer);

@@ -175,6 +175,7 @@ model Player {
   dateOfBirth DateTime?
   nationalityCode String @default("ZW")
   preferredFoot String?
+  photoUrl String?
   position String
   registrations PlayerRegistration[]
   transfers Transfer[]

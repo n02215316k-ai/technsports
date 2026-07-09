@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 export type VerifiedFact = {
-  type: 'GOAL'|'SHOT'|'TOUCH'|'FREE_KICK'|'CORNER'|'FOUL'|'PENALTY'|'YELLOW_CARD'|'RED_CARD'|'SUBSTITUTION'|'POSSESSION_INTERVAL'|'APPEARANCE'|'ASSIST'|'MATCH_RESULT';
+  type: 'GOAL'|'SHOT'|'TOUCH'|'FREE_KICK'|'CORNER'|'FOUL'|'PENALTY'|'YELLOW_CARD'|'RED_CARD'|'SUBSTITUTION'|'POSSESSION_INTERVAL'|'MATCH_ATTENDANCE'|'APPEARANCE'|'ASSIST'|'MATCH_RESULT';
   teamId: string;
   opponentId?: string;
   playerId?: string;

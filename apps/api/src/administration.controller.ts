@@ -13,7 +13,7 @@ class RoleDto{@IsIn(['SUPPORTER','COLLECTOR','REVIEWER','EDITOR','ADMIN']) role!
 class FixtureDto{@IsString() seasonId!:string;@IsString() homeTeamId!:string;@IsString() awayTeamId!:string;@IsDateString() kickoffAt!:string;@IsOptional() @IsString() round?:string;@IsOptional() @IsString() venueName?:string;@IsOptional() @IsString() venueId?:string}
 class ArticleDto{@IsString() @Length(5,180) title!:string;@IsString() @Length(20,400) excerpt!:string;@IsString() @Length(50,50000) body!:string;@IsString() @Length(2,40) category!:string;@IsIn(['DRAFT','PUBLISHED']) status!:'DRAFT'|'PUBLISHED';@IsOptional() @IsString() @MaxLength(100) authorName?:string;@IsOptional() @IsUrl() coverImageUrl?:string;@IsOptional() @IsArray() @IsString({each:true}) relatedPlayerIds?:string[]}
 class VenueDto{@IsString() @Length(2,120) name!:string;@IsString() @Length(2,80) city!:string;@IsOptional() @IsString() @Matches(/^[A-Za-z]{2}$/) countryCode?:string;@IsOptional() @IsNumber() latitude?:number;@IsOptional() @IsNumber() longitude?:number}
-class PlayerDto{@IsString() @Length(2,120) legalName!:string;@IsOptional() @IsString() @Length(2,80) knownAs?:string;@IsOptional() @IsDateString() dateOfBirth?:string;@IsOptional() @IsString() @Matches(/^[A-Za-z]{2}$/) nationalityCode?:string;@IsOptional() @IsString() @Length(2,30) preferredFoot?:string;@IsString() @Length(2,40) position!:string}
+class PlayerDto{@IsString() @Length(2,120) legalName!:string;@IsOptional() @IsString() @Length(2,80) knownAs?:string;@IsOptional() @IsDateString() dateOfBirth?:string;@IsOptional() @IsString() @Matches(/^[A-Za-z]{2}$/) nationalityCode?:string;@IsOptional() @IsString() @Length(2,30) preferredFoot?:string;@IsOptional() @IsUrl({require_tld:false}) photoUrl?:string;@IsString() @Length(2,40) position!:string}
 class PlayerRegistrationDto{@IsString() playerId!:string;@IsString() teamId!:string;@IsString() seasonId!:string;@IsOptional() @IsInt() @Min(1) @Max(99) shirtNumber?:number;@IsDateString() startsAt!:string;@IsOptional() @IsDateString() endsAt?:string}
 class FixtureUpdateDto{@IsOptional() @IsDateString() kickoffAt?:string;@IsOptional() @IsString() round?:string;@IsOptional() @IsString() venueName?:string;@IsOptional() @IsString() venueId?:string;@IsOptional() @IsIn(['SCHEDULED','LIVE','SUSPENDED','POSTPONED','ABANDONED','FINISHED']) status?:'SCHEDULED'|'LIVE'|'SUSPENDED'|'POSTPONED'|'ABANDONED'|'FINISHED';@IsOptional() @IsInt() @Min(0) homeScore?:number;@IsOptional() @IsInt() @Min(0) awayScore?:number}
 class LineupDto{@IsString() teamId!:string;@IsArray() @IsString({each:true}) playerIds!:string[]}
@@ -41,6 +41,7 @@ export class AdminKeyGuard implements CanActivate {
 @Controller('admin') @UseGuards(AdminKeyGuard)
 export class AdministrationController {
   constructor(private readonly admin:AdministrationService,private readonly auth:AuthService,private readonly assets:AssetService){}
+  private publicUrl(request:any,path:string){const proto=String(request.get('x-forwarded-proto')??request.protocol).split(',')[0];const host=String(request.get('x-forwarded-host')??request.get('host'));return `${proto}://${host}${path}`}
   @Get('users') users(){return this.auth.users()}
   @Post('users/:id/role') role(@Param('id') id:string,@Body() dto:RoleDto){return this.auth.assignRole(id,dto.role)}
   @Post('competitions') competition(@Body() dto:CompetitionDto){return this.admin.createCompetition(dto)}
@@ -63,9 +64,11 @@ export class AdministrationController {
   @Post('review/identity-claims/:id/resolve') resolveIdentity(@Param('id') id:string,@Body() dto:ResolveIdentityDto){return this.admin.resolveIdentityClaim(id,dto.playerId)}
   @Post('review/identity-claims/:id/reject') rejectIdentity(@Param('id') id:string,@Body() dto:RejectDto){return this.admin.rejectIdentityClaim(id,dto.reason)}
   @Post('uploads/cover') @UseInterceptors(FileInterceptor('file',{limits:{fileSize:5*1024*1024}}))
-  uploadCover(@UploadedFile() file:any,@Req() request:any){const saved=this.assets.saveImage(file,'covers');return {...saved,url:`${request.protocol}://${request.get('host')}${saved.path}`}}
+  uploadCover(@UploadedFile() file:any,@Req() request:any){const saved=this.assets.saveImage(file,'covers');return {...saved,url:this.publicUrl(request,saved.path)}}
   @Post('uploads/team-logo') @UseInterceptors(FileInterceptor('file',{limits:{fileSize:5*1024*1024}}))
-  uploadTeamLogo(@UploadedFile() file:any,@Req() request:any){const saved=this.assets.saveImage(file,'team-logos');return {...saved,url:`${request.protocol}://${request.get('host')}${saved.path}`}}
+  uploadTeamLogo(@UploadedFile() file:any,@Req() request:any){const saved=this.assets.saveImage(file,'team-logos');return {...saved,url:this.publicUrl(request,saved.path)}}
+  @Post('uploads/player-face') @UseInterceptors(FileInterceptor('file',{limits:{fileSize:5*1024*1024}}))
+  uploadPlayerFace(@UploadedFile() file:any,@Req() request:any){const saved=this.assets.saveImage(file,'player-faces');return {...saved,url:this.publicUrl(request,saved.path)}}
 }
 
 @Controller('catalog')
