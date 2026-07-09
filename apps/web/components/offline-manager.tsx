@@ -1,0 +1,5 @@
+'use client';
+import { WifiOff } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { flushQueue, queueCount } from '@/lib/offline-queue';
+export function OfflineManager(){const [online,setOnline]=useState(true);const [queued,setQueued]=useState(0);useEffect(()=>{setOnline(navigator.onLine);queueCount().then(setQueued);if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>undefined);const refresh=()=>queueCount().then(setQueued);const connected=()=>{setOnline(true);flushQueue().then(refresh)};const disconnected=()=>setOnline(false);window.addEventListener('online',connected);window.addEventListener('offline',disconnected);window.addEventListener('technsports-queue-change',refresh);return()=>{window.removeEventListener('online',connected);window.removeEventListener('offline',disconnected);window.removeEventListener('technsports-queue-change',refresh)}},[]);if(online&&!queued)return null;return <div className="offline-banner"><WifiOff/>{online?`${queued} queued contribution${queued===1?'':'s'} syncing`:`Offline · ${queued} contribution${queued===1?'':'s'} queued`}</div>}

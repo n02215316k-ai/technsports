@@ -1,0 +1,27 @@
+{
+  "name": "@technsports/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint || true",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "5.90.20",
+    "lucide-react": "0.468.0",
+    "next": "16.2.10",
+    "postcss": "^8.5.10",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "recharts": "2.15.4"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.15",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "typescript": "5.9.3"
+  }
+}

@@ -1,0 +1,79 @@
+services:
+  web:
+    image: technsports-web:prod
+    container_name: technsports
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: /api/v1
+        INTERNAL_API_ORIGIN: http://technsports-api:4000
+    environment:
+      NEXT_PUBLIC_API_URL: /api/v1
+      INTERNAL_API_ORIGIN: http://technsports-api:4000
+    expose:
+      - "3000"
+    networks:
+      - proxy
+      - backend
+    depends_on:
+      api:
+        condition: service_started
+
+  api:
+    image: technsports-api:prod
+    container_name: technsports-api
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://technsports:${POSTGRES_APP_PASSWORD}@postgres:5432/technsports
+      REDIS_URL: redis://redis:6379
+      PERSISTENCE_MODE: postgres
+      PASSWORD_PEPPER: ${PASSWORD_PEPPER:?Set PASSWORD_PEPPER in .env}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-}
+      COOKIE_SECURE: "true"
+      WEB_URL: https://${DOMAIN}
+      CORS_ORIGINS: https://${DOMAIN}
+      SMTP_HOST: ${SMTP_HOST:?Set SMTP_HOST in .env}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_REQUIRE_TLS: ${SMTP_REQUIRE_TLS:-true}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      EMAIL_FROM: ${EMAIL_FROM:?Set EMAIL_FROM in .env}
+    expose:
+      - "4000"
+    volumes:
+      - technsports_uploads:/app/uploads
+    networks:
+      - backend
+
+  seed:
+    image: technsports-api:prod
+    profiles: ["seed"]
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    command: sh -c "./node_modules/.bin/prisma migrate deploy --schema prisma/schema.prisma && node prisma/seed.mjs"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://technsports:${POSTGRES_APP_PASSWORD}@postgres:5432/technsports
+      PASSWORD_PEPPER: ${PASSWORD_PEPPER:?Set PASSWORD_PEPPER in .env}
+      ALLOW_DEMO_SEED: ${ALLOW_DEMO_SEED:-false}
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-}
+    networks:
+      - backend
+
+volumes:
+  technsports_uploads:
+
+networks:
+  proxy:
+    external: true
+  backend:
+    external: true

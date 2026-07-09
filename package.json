@@ -1,0 +1,23 @@
+{
+  "name": "technsports",
+  "private": true,
+  "packageManager": "npm@11.8.0",
+  "workspaces": ["apps/*"],
+  "scripts": {
+    "dev": "concurrently -n web,api -c cyan,magenta \"npm run dev -w @technsports/web\" \"npm run start:dev -w @technsports/api\"",
+    "build": "npm run build -w @technsports/api && npm run build -w @technsports/web",
+    "test": "npm run test -w @technsports/api && npm run test -w @technsports/web",
+    "lint": "npm run lint -w @technsports/web",
+    "db:generate": "npm run prisma:generate -w @technsports/api",
+    "db:migrate": "npm run prisma:migrate -w @technsports/api",
+    "db:deploy": "prisma migrate deploy --schema apps/api/prisma/schema.prisma",
+    "db:studio": "prisma studio --schema apps/api/prisma/schema.prisma",
+    "db:seed": "node --env-file=.env apps/api/prisma/seed.mjs"
+  },
+  "devDependencies": {
+    "concurrently": "9.2.1"
+  },
+  "overrides": {
+    "postcss": "8.5.10"
+  }
+}

@@ -1,0 +1,105 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    environment:
+      POSTGRES_DB: technsports
+      POSTGRES_USER: technsports
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U technsports"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:8-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mailpit:
+    image: axllent/mailpit:v1.22
+    ports:
+      - "${MAILPIT_WEB_PORT:-8025}:8025"
+      - "${MAILPIT_SMTP_PORT:-1025}:1025"
+
+  api:
+    image: technsports-api:local
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://technsports:${POSTGRES_PASSWORD}@postgres:5432/technsports
+      REDIS_URL: redis://redis:6379
+      PORT: 4000
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-}
+      PERSISTENCE_MODE: postgres
+      PASSWORD_PEPPER: ${PASSWORD_PEPPER:?Set PASSWORD_PEPPER in .env}
+      COOKIE_SECURE: ${DOCKER_COOKIE_SECURE:-false}
+      WEB_URL: ${WEB_URL:-http://localhost:3000}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      SMTP_HOST: ${DOCKER_SMTP_HOST:-mailpit}
+      SMTP_PORT: ${DOCKER_SMTP_PORT:-1025}
+      SMTP_SECURE: ${DOCKER_SMTP_SECURE:-false}
+      SMTP_REQUIRE_TLS: ${DOCKER_SMTP_REQUIRE_TLS:-false}
+      SMTP_USER: ${DOCKER_SMTP_USER:-}
+      SMTP_PASS: ${DOCKER_SMTP_PASS:-}
+      EMAIL_FROM: ${EMAIL_FROM:-TechnSports <no-reply@technsports.co.zw>}
+    ports:
+      - "${API_PORT:-4000}:4000"
+    volumes:
+      - uploads_data:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+
+  seed:
+    image: technsports-api:local
+    profiles: ["seed"]
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    command: sh -c "./node_modules/.bin/prisma migrate deploy --schema prisma/schema.prisma && node prisma/seed.mjs"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://technsports:${POSTGRES_PASSWORD}@postgres:5432/technsports
+      PASSWORD_PEPPER: ${PASSWORD_PEPPER:?Set PASSWORD_PEPPER in .env}
+      ALLOW_DEMO_SEED: ${ALLOW_DEMO_SEED:-false}
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-DemoPass!2026}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    image: technsports-web:local
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000/api/v1}
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000/api/v1}
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      api:
+        condition: service_started
+
+volumes:
+  postgres_data:
+  redis_data:
+  uploads_data:

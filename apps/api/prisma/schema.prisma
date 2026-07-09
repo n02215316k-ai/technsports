@@ -1,0 +1,388 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  SUPPORTER
+  COLLECTOR
+  REVIEWER
+  EDITOR
+  ADMIN
+}
+enum MatchStatus {
+  SCHEDULED
+  LIVE
+  SUSPENDED
+  POSTPONED
+  ABANDONED
+  FINISHED
+}
+enum AssignmentScope {
+  LINEUPS
+  TIMELINE
+  PLAYER_ACTIONS
+  TEAM_STATS
+  MEDIA
+}
+enum SubmissionStatus {
+  PENDING
+  CONSENSUS
+  CONFLICT
+  APPROVED
+  REJECTED
+}
+enum TransferType {
+  PERMANENT
+  LOAN
+  LOAN_RETURN
+  FREE_AGENT
+  RELEASED
+}
+enum IdentityClaimStatus {
+  PENDING
+  RESOLVED
+  REJECTED
+}
+enum ParticipantSource {
+  CONFIRMED_LINEUP
+  SEASON_REGISTRATION
+  RECENT_APPEARANCE
+  CONTRIBUTOR_CLAIM
+}
+
+model User {
+  id String @id @default(cuid())
+  email String @unique
+  username String? @unique
+  displayName String
+  passwordHash String?
+  emailVerifiedAt DateTime?
+  verificationTokenHash String?
+  verificationTokenExpiresAt DateTime?
+  failedLoginAttempts Int @default(0)
+  lockedUntil DateTime?
+  lastLoginAt DateTime?
+  role UserRole @default(SUPPORTER)
+  reputation Float @default(0)
+  assignments Assignment[]
+  observations Observation[]
+  contributorProfile ContributorProfile?
+  sessions AuthSession[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AuthSession {
+  id String @id @default(cuid())
+  tokenHash String @unique
+  userId String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  lastUsedAt DateTime @default(now())
+  userAgentHash String?
+  ipHash String?
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, expiresAt])
+}
+
+model ContributorProfile {
+  userId String @id
+  publicSlug String @unique
+  bio String?
+  coverageProvince String?
+  specialties String[]
+  publicVisible Boolean @default(true)
+  verifiedAt DateTime?
+  joinedAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id])
+}
+
+model Competition {
+  id String @id @default(cuid())
+  name String
+  countryCode String @default("ZW")
+  seasons Season[]
+  @@unique([name, countryCode])
+}
+
+model Season {
+  id String @id @default(cuid())
+  label String
+  startsAt DateTime
+  endsAt DateTime
+  competitionId String
+  competition Competition @relation(fields: [competitionId], references: [id])
+  teams SeasonTeam[]
+  matches Match[]
+  identityClaims PlayerIdentityClaim[]
+  @@unique([competitionId, label])
+}
+
+model Team {
+  id String @id @default(cuid())
+  name String
+  shortName String
+  slug String @unique
+  crestUrl String?
+  city String?
+  foundedYear Int?
+  websiteUrl String?
+  primaryColor String?
+  secondaryColor String?
+  seasons SeasonTeam[]
+  homeMatches Match[] @relation("HomeTeam")
+  awayMatches Match[] @relation("AwayTeam")
+  registrations PlayerRegistration[]
+  transfersFrom Transfer[] @relation("TransferFrom")
+  transfersTo Transfer[] @relation("TransferTo")
+  homeVenueId String?
+  homeVenue Venue? @relation(fields: [homeVenueId], references: [id])
+  matchParticipants MatchParticipant[]
+  identityClaims PlayerIdentityClaim[]
+}
+
+model Venue {
+  id String @id @default(cuid())
+  name String
+  slug String @unique
+  city String
+  countryCode String @default("ZW")
+  latitude Decimal?
+  longitude Decimal?
+  homeTeams Team[]
+  matches Match[]
+}
+
+model SeasonTeam {
+  seasonId String
+  teamId String
+  season Season @relation(fields: [seasonId], references: [id])
+  team Team @relation(fields: [teamId], references: [id])
+  pointsDeduction Int @default(0)
+  @@id([seasonId, teamId])
+}
+
+model Player {
+  id String @id @default(cuid())
+  legalName String
+  knownAs String?
+  slug String @unique
+  dateOfBirth DateTime?
+  nationalityCode String @default("ZW")
+  preferredFoot String?
+  position String
+  registrations PlayerRegistration[]
+  transfers Transfer[]
+  valuations MarketValuation[]
+  articles ArticlePlayer[]
+  aliases PlayerAlias[]
+  matchParticipants MatchParticipant[]
+  observations Observation[]
+  resolvedIdentityClaims PlayerIdentityClaim[] @relation("ResolvedIdentityClaims")
+}
+
+model PlayerAlias {
+  id String @id @default(cuid())
+  playerId String
+  name String
+  normalizedName String
+  source String?
+  player Player @relation(fields: [playerId], references: [id])
+  @@unique([playerId, normalizedName])
+  @@index([normalizedName])
+}
+
+model PlayerRegistration {
+  id String @id @default(cuid())
+  playerId String
+  teamId String
+  seasonId String
+  shirtNumber Int?
+  startsAt DateTime
+  endsAt DateTime?
+  player Player @relation(fields: [playerId], references: [id])
+  team Team @relation(fields: [teamId], references: [id])
+  @@index([seasonId, teamId])
+}
+
+model Match {
+  id String @id @default(cuid())
+  seasonId String
+  homeTeamId String
+  awayTeamId String
+  kickoffAt DateTime
+  venueName String?
+  venueId String?
+  round String?
+  status MatchStatus @default(SCHEDULED)
+  homeScore Int @default(0)
+  awayScore Int @default(0)
+  season Season @relation(fields: [seasonId], references: [id])
+  homeTeam Team @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  awayTeam Team @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  assignments Assignment[]
+  observations Observation[]
+  facts MatchFact[]
+  venue Venue? @relation(fields: [venueId], references: [id])
+  participants MatchParticipant[]
+  @@index([seasonId, kickoffAt])
+  @@unique([seasonId, homeTeamId, awayTeamId, kickoffAt])
+}
+
+model MatchParticipant {
+  matchId String
+  playerId String
+  teamId String
+  source ParticipantSource
+  confirmed Boolean @default(false)
+  shirtNumber Int?
+  match Match @relation(fields: [matchId], references: [id])
+  player Player @relation(fields: [playerId], references: [id])
+  team Team @relation(fields: [teamId], references: [id])
+  @@id([matchId, playerId])
+  @@index([matchId, teamId])
+}
+
+model PlayerIdentityClaim {
+  id String @id @default(cuid())
+  suppliedName String
+  normalizedName String
+  teamId String
+  seasonId String
+  status IdentityClaimStatus @default(PENDING)
+  resolvedPlayerId String?
+  createdAt DateTime @default(now())
+  resolvedAt DateTime?
+  team Team @relation(fields: [teamId], references: [id])
+  season Season @relation(fields: [seasonId], references: [id])
+  resolvedPlayer Player? @relation("ResolvedIdentityClaims", fields: [resolvedPlayerId], references: [id])
+  observations Observation[]
+  @@index([normalizedName, teamId, seasonId])
+}
+
+model Assignment {
+  id String @id @default(cuid())
+  matchId String
+  userId String
+  scope AssignmentScope
+  acceptedAt DateTime?
+  completedAt DateTime?
+  match Match @relation(fields: [matchId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+  @@unique([matchId, userId, scope])
+}
+
+model Observation {
+  id String @id @default(cuid())
+  matchId String
+  contributorId String
+  eventType String
+  subjectId String?
+  playerId String?
+  identityClaimId String?
+  matchSecond Int
+  payload Json
+  clientEventId String
+  clientRecordedAt DateTime
+  receivedAt DateTime @default(now())
+  status SubmissionStatus @default(PENDING)
+  match Match @relation(fields: [matchId], references: [id])
+  contributor User @relation(fields: [contributorId], references: [id])
+  player Player? @relation(fields: [playerId], references: [id])
+  identityClaim PlayerIdentityClaim? @relation(fields: [identityClaimId], references: [id])
+  @@unique([contributorId, clientEventId])
+  @@index([matchId, eventType, matchSecond])
+}
+
+model MatchFact {
+  id String @id @default(cuid())
+  matchId String
+  factType String
+  subjectId String?
+  matchSecond Int?
+  value Json
+  confidence Float
+  sourceCount Int
+  publishedAt DateTime?
+  supersedesId String?
+  match Match @relation(fields: [matchId], references: [id])
+  @@index([matchId, factType])
+}
+
+model Transfer {
+  id String @id @default(cuid())
+  playerId String
+  fromTeamId String?
+  toTeamId String?
+  type TransferType
+  announcedAt DateTime
+  effectiveAt DateTime
+  verified Boolean @default(false)
+  feeMinor BigInt?
+  feeCurrency String?
+  feeDisclosed Boolean @default(true)
+  sourceUrl String?
+  player Player @relation(fields: [playerId], references: [id])
+  fromTeam Team? @relation("TransferFrom", fields: [fromTeamId], references: [id])
+  toTeam Team? @relation("TransferTo", fields: [toTeamId], references: [id])
+}
+
+model TransferContribution {
+  id String @id @default(cuid())
+  contributorId String
+  clientEventId String
+  playerId String
+  fromTeamId String?
+  toTeamId String
+  type TransferType
+  effectiveAt DateTime
+  feeMinor BigInt?
+  feeCurrency String?
+  sourceUrl String
+  status SubmissionStatus @default(PENDING)
+  receivedAt DateTime @default(now())
+  @@unique([contributorId, clientEventId])
+  @@index([playerId, toTeamId, effectiveAt])
+}
+
+model MarketValuation {
+  id String @id @default(cuid())
+  playerId String
+  amountMinor BigInt
+  currency String
+  valuedAt DateTime
+  methodology String
+  confidence Float?
+  player Player @relation(fields: [playerId], references: [id])
+  @@unique([playerId, valuedAt, methodology])
+}
+
+model Article {
+  id String @id @default(cuid())
+  slug String @unique
+  title String
+  excerpt String
+  body Json
+  category String @default("NEWS")
+  authorName String @default("TechnSports Data Desk")
+  coverImageUrl String?
+  status String @default("DRAFT")
+  publishedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  players ArticlePlayer[]
+}
+
+model ArticlePlayer {
+  articleId String
+  playerId String
+  relevance Float @default(1)
+  article Article @relation(fields: [articleId], references: [id])
+  player Player @relation(fields: [playerId], references: [id])
+  @@id([articleId, playerId])
+}
