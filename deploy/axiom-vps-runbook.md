@@ -48,6 +48,40 @@ docker compose up -d
 docker compose logs -f api web
 ```
 
+## GitHub-based update workflow
+
+After the project is pushed to GitHub, keep the server copy as a git checkout and keep production secrets only in the server `.env` file.
+
+One-time setup on the server:
+
+```bash
+cd /srv/docker/websites
+mv technsports technsports.manual-backup-$(date +%Y%m%d-%H%M%S)
+git clone YOUR_GITHUB_REPOSITORY_URL technsports
+cd technsports
+cp ../technsports.manual-backup-*/.env .env
+cp deploy/axiom-vps.docker-compose.yml docker-compose.yml
+chmod +x deploy/axiom-vps-update.sh
+docker compose build
+docker compose up -d
+docker compose exec -T api npx prisma migrate deploy
+```
+
+For every later release:
+
+```bash
+cd /srv/docker/websites/technsports
+./deploy/axiom-vps-update.sh
+```
+
+Normal local workflow:
+
+```bash
+git add .
+git commit -m "Describe the change"
+git push origin main
+```
+
 ## Nginx Proxy Manager
 
 The existing proxy host for `technsports.co.zw` should forward to:
