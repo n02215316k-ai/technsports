@@ -18,6 +18,7 @@ import './auth.css';
 import './form-guide.css';
 import './opta.css';
 import './roles.css';
+import './tickets.css';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-body' });
 const display = Space_Grotesk({ subsets: ['latin'], variable: '--font-display' });

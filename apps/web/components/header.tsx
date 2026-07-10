@@ -8,7 +8,7 @@ import { OfflineManager } from './offline-manager';
 import { usePathname } from 'next/navigation';
 import { AccountMenu } from './account-menu';
 
-const nav = [['Scores','/scores'],['Fixtures','/fixtures'],['Table','/table'],['Players','/players'],['Contributors','/contributors'],['Transfers','/transfers'],['News','/news']];
+const nav = [['Scores','/scores'],['Fixtures','/fixtures'],['Tickets','/tickets'],['Table','/table'],['Players','/players'],['Contributors','/contributors'],['Transfers','/transfers'],['News','/news']];
 type User={role:'SUPPORTER'|'COLLECTOR'|'REVIEWER'|'EDITOR'|'ADMIN'};
 
 export function Header() {

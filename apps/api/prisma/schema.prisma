@@ -54,6 +54,20 @@ enum ParticipantSource {
   RECENT_APPEARANCE
   CONTRIBUTOR_CLAIM
 }
+enum TicketOrderStatus {
+  RESERVED
+  PENDING_PAYMENT
+  PAID
+  CANCELLED
+  EXPIRED
+  REFUNDED
+}
+enum TicketStatus {
+  ISSUED
+  CHECKED_IN
+  VOID
+  REFUNDED
+}
 
 model User {
   id String @id @default(cuid())
@@ -71,6 +85,7 @@ model User {
   reputation Float @default(0)
   assignments Assignment[]
   observations Observation[]
+  ticketOrders TicketOrder[]
   contributorProfile ContributorProfile?
   sessions AuthSession[]
   createdAt DateTime @default(now())
@@ -229,6 +244,9 @@ model Match {
   assignments Assignment[]
   observations Observation[]
   facts MatchFact[]
+  ticketProducts TicketProduct[]
+  ticketOrders TicketOrder[]
+  tickets Ticket[]
   venue Venue? @relation(fields: [venueId], references: [id])
   participants MatchParticipant[]
   @@index([seasonId, kickoffAt])
@@ -313,6 +331,87 @@ model MatchFact {
   supersedesId String?
   match Match @relation(fields: [matchId], references: [id])
   @@index([matchId, factType])
+}
+
+model TicketProduct {
+  id String @id @default(cuid())
+  matchId String
+  name String
+  description String?
+  priceMinor Int
+  currency String @default("USD")
+  quantityTotal Int
+  quantitySold Int @default(0)
+  perOrderLimit Int @default(10)
+  saleStartsAt DateTime?
+  saleEndsAt DateTime?
+  gate String?
+  section String?
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  match Match @relation(fields: [matchId], references: [id])
+  orderItems TicketOrderItem[]
+  tickets Ticket[]
+  @@unique([matchId, name])
+  @@index([matchId, active])
+}
+
+model TicketOrder {
+  id String @id @default(cuid())
+  publicRef String @unique
+  matchId String
+  userId String?
+  buyerName String
+  buyerEmail String
+  buyerPhone String?
+  status TicketOrderStatus @default(PENDING_PAYMENT)
+  paymentMethod String
+  paymentReference String?
+  amountMinor Int
+  currency String @default("USD")
+  expiresAt DateTime
+  paidAt DateTime?
+  cancelledAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  match Match @relation(fields: [matchId], references: [id])
+  user User? @relation(fields: [userId], references: [id])
+  items TicketOrderItem[]
+  tickets Ticket[]
+  @@index([matchId, status])
+  @@index([buyerEmail])
+}
+
+model TicketOrderItem {
+  id String @id @default(cuid())
+  orderId String
+  productId String
+  quantity Int
+  unitPriceMinor Int
+  currency String
+  order TicketOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product TicketProduct @relation(fields: [productId], references: [id])
+}
+
+model Ticket {
+  id String @id @default(cuid())
+  orderId String
+  productId String
+  matchId String
+  ticketCode String @unique
+  qrPayload String
+  holderName String
+  holderEmail String
+  status TicketStatus @default(ISSUED)
+  issuedAt DateTime @default(now())
+  checkedInAt DateTime?
+  checkInDevice String?
+  order TicketOrder @relation(fields: [orderId], references: [id])
+  product TicketProduct @relation(fields: [productId], references: [id])
+  match Match @relation(fields: [matchId], references: [id])
+  @@index([matchId, status])
+  @@index([orderId])
 }
 
 model Transfer {
