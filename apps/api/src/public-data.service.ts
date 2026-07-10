@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { MatchStatus, UserRole } from '@prisma/client';
+import { MatchStatus, Prisma, UserRole } from '@prisma/client';
 import { PrismaService } from './prisma.service';
 
 @Injectable()
@@ -7,6 +7,21 @@ export class PublicDataService {
   constructor(private readonly db:PrismaService){}
   competitions(){return this.db.competition.findMany({include:{seasons:{orderBy:{startsAt:'desc'}}},orderBy:{name:'asc'}})}
   async matches(filters:{seasonId?:string;date?:string;teamId?:string;limit?:number}){const date=filters.date?new Date(`${filters.date}T00:00:00.000Z`):undefined;const end=date?new Date(date.getTime()+86400000):undefined;return this.db.match.findMany({where:{seasonId:filters.seasonId,kickoffAt:date?{gte:date,lt:end}:undefined,OR:filters.teamId?[{homeTeamId:filters.teamId},{awayTeamId:filters.teamId}]:undefined},include:{homeTeam:true,awayTeam:true,venue:true,season:{include:{competition:true}}},orderBy:{kickoffAt:'desc'},take:Math.min(filters.limit??100,100)})}
+  async matchesPage(filters:{seasonId?:string;date?:string;teamId?:string;status?:string;page?:number;pageSize?:number}){
+    const page=Math.max(1,filters.page??1),pageSize=Math.min(Math.max(1,filters.pageSize??12),50);
+    const date=filters.date?new Date(`${filters.date}T00:00:00.000Z`):undefined,end=date?new Date(date.getTime()+86400000):undefined;
+    const where:Prisma.MatchWhereInput={seasonId:filters.seasonId,kickoffAt:date?{gte:date,lt:end}:undefined,OR:filters.teamId?[{homeTeamId:filters.teamId},{awayTeamId:filters.teamId}]:undefined};
+    const status=(filters.status??'ALL').toUpperCase();
+    if(status==='FINISHED')where.status=MatchStatus.FINISHED;
+    else if(status==='UPCOMING')where.status={in:[MatchStatus.SCHEDULED,MatchStatus.LIVE,MatchStatus.SUSPENDED,MatchStatus.POSTPONED]};
+    else if(Object.values(MatchStatus).includes(status as MatchStatus))where.status=status as MatchStatus;
+    const orderBy:Prisma.MatchOrderByWithRelationInput=status==='FINISHED'?{kickoffAt:'desc'}:{kickoffAt:'asc'};
+    const [items,total]=await Promise.all([
+      this.db.match.findMany({where,include:{homeTeam:true,awayTeam:true,venue:true,season:{include:{competition:true}}},orderBy,skip:(page-1)*pageSize,take:pageSize}),
+      this.db.match.count({where})
+    ]);
+    return{items,total,page,pageSize,pageCount:Math.max(1,Math.ceil(total/pageSize)),status};
+  }
   async match(id:string){const item=await this.db.match.findUnique({where:{id},include:{homeTeam:true,awayTeam:true,venue:true,season:{include:{competition:true}},participants:{include:{player:true,team:true}},facts:{orderBy:{matchSecond:'asc'}}}});if(!item)throw new NotFoundException('Match not found');return item}
   async standings(seasonId:string){const [registrations,matches]=await Promise.all([this.db.seasonTeam.findMany({where:{seasonId},include:{team:true}}),this.db.match.findMany({where:{seasonId,status:MatchStatus.FINISHED},orderBy:{kickoffAt:'desc'}})]);return registrations.map(({team,pointsDeduction})=>{let played=0,wins=0,draws=0,losses=0,goalsFor=0,goalsAgainst=0;const form:string[]=[];for(const match of matches){const home=match.homeTeamId===team.id,away=match.awayTeamId===team.id;if(!home&&!away)continue;played++;const gf=home?match.homeScore:match.awayScore;const ga=home?match.awayScore:match.homeScore;goalsFor+=gf;goalsAgainst+=ga;const result=gf>ga?'W':gf<ga?'L':'D';if(result==='W')wins++;else if(result==='L')losses++;else draws++;if(form.length<5)form.push(result)}return {team,played,wins,draws,losses,goalsFor,goalsAgainst,goalDifference:goalsFor-goalsAgainst,points:wins*3+draws-pointsDeduction,form}}).sort((a,b)=>b.points-a.points||b.goalDifference-a.goalDifference||b.goalsFor-a.goalsFor).map((row,index)=>({...row,position:index+1}))}
   async players(seasonId?:string){const [players,facts,participants]=await Promise.all([this.db.player.findMany({include:{registrations:{where:seasonId?{seasonId}:undefined,include:{team:true},orderBy:{startsAt:'desc'},take:1}},orderBy:{legalName:'asc'}}),this.db.matchFact.findMany({where:{publishedAt:{not:null},match:seasonId?{seasonId}:undefined},select:{factType:true,subjectId:true}}),this.db.matchParticipant.findMany({where:seasonId?{match:{seasonId}}:undefined,select:{playerId:true,matchId:true}})]);const stats=new Map<string,{appearances:Set<string>;goals:number;assists:number;cards:number}>();for(const player of players)stats.set(player.id,{appearances:new Set(),goals:0,assists:0,cards:0});for(const participant of participants){stats.get(participant.playerId)?.appearances.add(participant.matchId)}for(const fact of facts){if(!fact.subjectId)continue;const item=stats.get(fact.subjectId);if(!item)continue;if(fact.factType==='GOAL')item.goals++;else if(fact.factType==='ASSIST')item.assists++;else if(fact.factType==='YELLOW_CARD'||fact.factType==='RED_CARD')item.cards++}return players.map(player=>{const events=stats.get(player.id)??{appearances:new Set<string>(),goals:0,assists:0,cards:0};return{id:player.id,slug:player.slug,name:player.knownAs??player.legalName,legalName:player.legalName,photoUrl:player.photoUrl,position:player.position,nationalityCode:player.nationalityCode,preferredFoot:player.preferredFoot,team:player.registrations[0]?.team??null,appearances:events.appearances.size,goals:events.goals,assists:events.assists,cards:events.cards}})}

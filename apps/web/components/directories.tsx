@@ -13,6 +13,7 @@ type Standing={position:number;team:Team;played:number;wins:number;draws:number;
 type Player={id:string;slug:string;name:string;photoUrl?:string;position:string;team:Team|null;appearances:number;goals:number;assists:number};
 type Transfer={id:string;type:string;announcedAt:string;feeMinor?:string;feeCurrency?:string;feeDisclosed:boolean;player:{legalName:string;knownAs?:string;photoUrl?:string;position:string};fromTeam?:Team;toTeam?:Team};
 type Article={slug:string;title:string;excerpt:string;category:string;authorName:string;coverImageUrl?:string;publishedAt:string};
+type PagedMatches={items:Match[];total:number;page:number;pageSize:number;pageCount:number;status:string};
 
 export function DirectoryHeader({eyebrow,title,description}:{eyebrow:string;title:string;description:string}){return <div className="directory-head"><span className="eyebrow">{eyebrow}</span><h1>{title}</h1><p>{description}</p></div>}
 const Loading=()=> <div className="empty-state"><b>Loading verified data…</b></div>;
@@ -29,8 +30,17 @@ export function FixturesDirectory(){
   const {data:competitions}=useApi<Competition[]>('/public/competitions');
   const [seasonId,setSeasonId]=useState('');
   const selected=seasonId||competitions?.[0]?.seasons?.[0]?.id||'';
-  const {data,error,loading}=useApi<Match[]>(selected?`/public/matches?seasonId=${selected}`:null);
-  return <main className="page-shell"><DirectoryHeader eyebrow="MATCH CALENDAR" title="Fixtures & results" description="Browse database fixtures by competition and season."/><SeasonFilter competitions={competitions??[]} value={selected} onChange={setSeasonId}/>{loading?<Loading/>:error?<ErrorState text={error}/>:<MatchList matches={(data??[]).slice().reverse()}/>}</main>;
+  const [upcomingPage,setUpcomingPage]=useState(1);
+  const [finishedPage,setFinishedPage]=useState(1);
+  const upcomingPath=selected?`/public/matches-page?seasonId=${selected}&status=UPCOMING&page=${upcomingPage}&pageSize=10`:null;
+  const finishedPath=selected?`/public/matches-page?seasonId=${selected}&status=FINISHED&page=${finishedPage}&pageSize=10`:null;
+  const upcoming=useApi<PagedMatches>(upcomingPath);
+  const finished=useApi<PagedMatches>(finishedPath);
+  const changeSeason=(value:string)=>{setSeasonId(value);setUpcomingPage(1);setFinishedPage(1)};
+  return <main className="page-shell"><DirectoryHeader eyebrow="MATCH CALENDAR" title="Fixtures & results" description="Upcoming matches and completed results are separated for cleaner matchday browsing."/><SeasonFilter competitions={competitions??[]} value={selected} onChange={changeSeason}/>
+    <FixtureSection title="Upcoming matches" description="Scheduled, live, suspended and postponed fixtures." state={upcoming} page={upcomingPage} onPage={setUpcomingPage}/>
+    <FixtureSection title="Finished matches" description="Completed matches only. These results update the league table automatically." state={finished} page={finishedPage} onPage={setFinishedPage}/>
+  </main>;
 }
 
 export function TableDirectory(){
@@ -38,7 +48,7 @@ export function TableDirectory(){
   const [seasonId,setSeasonId]=useState('');
   const selected=seasonId||competitions?.[0]?.seasons?.[0]?.id||'';
   const {data,error,loading}=useApi<Standing[]>(selected?`/public/standings/${selected}`:null);
-  return <main className="page-shell"><DirectoryHeader eyebrow="STANDINGS" title="League table" description="Calculated from finished fixtures in the selected season."/><SeasonFilter competitions={competitions??[]} value={selected} onChange={setSeasonId}/>{loading?<Loading/>:error?<ErrorState text={error}/>:<Card className="full-table"><div className="full-table-row head"><span>POS</span><span>CLUB</span><span>P</span><span>W</span><span>D</span><span>L</span><span>GD</span><span>PTS</span><span>FORM</span></div>{(data??[]).map(row=><Link href={`/clubs/${row.team.slug}`} className="full-table-row" key={row.team.id}><span>{row.position}</span><span><TeamBadge small short={row.team.shortName} color={row.team.primaryColor}/><b>{row.team.name}</b></span><span>{row.played}</span><span>{row.wins}</span><span>{row.draws}</span><span>{row.losses}</span><span>{row.goalDifference>0?`+${row.goalDifference}`:row.goalDifference}</span><strong>{row.points}</strong><span className="form">{row.form.map((value,index)=><i className={value.toLowerCase()} key={index}>{value}</i>)}</span></Link>)}</Card>}</main>;
+  return <main className="page-shell"><DirectoryHeader eyebrow="STANDINGS" title="League table" description="Calculated from finished fixtures in the selected season."/><SeasonFilter competitions={competitions??[]} value={selected} onChange={setSeasonId}/><div className="data-note table-note"><CheckCircle2/><div><b>How this table updates</b><p>When an admin marks a fixture as FINISHED and enters the score, the API recalculates played, wins, draws, losses, goals, goal difference, points and last-five form from those finished matches.</p></div></div>{loading?<Loading/>:error?<ErrorState text={error}/>:<Card className="full-table"><div className="full-table-row head"><span>POS</span><span>CLUB</span><span>P</span><span>W</span><span>D</span><span>L</span><span>GD</span><span>PTS</span><span>FORM</span></div>{(data??[]).map(row=><Link href={`/clubs/${row.team.slug}`} className="full-table-row" key={row.team.id}><span>{row.position}</span><span><TeamBadge small short={row.team.shortName} color={row.team.primaryColor}/><b>{row.team.name}</b></span><span>{row.played}</span><span>{row.wins}</span><span>{row.draws}</span><span>{row.losses}</span><span>{row.goalDifference>0?`+${row.goalDifference}`:row.goalDifference}</span><strong>{row.points}</strong><span className="form">{row.form.map((value,index)=><i className={value.toLowerCase()} key={index}>{value}</i>)}</span></Link>)}</Card>}</main>;
 }
 
 export function PlayersDirectory(){
@@ -68,6 +78,11 @@ export function NewsDirectory(){
 function MatchList({matches}:{matches:Match[]}){
   if(!matches.length)return <div className="empty-state"><CalendarDays/><b>No fixtures found</b><span>Data will appear after a fixture is added.</span></div>;
   return <div className="directory-fixtures">{matches.map(match=><Link href={`/matches/${match.id}`} key={match.id}><span className={match.status==='LIVE'?'live-label':''}>{match.status}</span><b>{match.homeTeam.name}</b><strong>{match.status==='SCHEDULED'?'–':match.homeScore} — {match.status==='SCHEDULED'?'–':match.awayScore}</strong><b>{match.awayTeam.name}</b><small><MapPin/>{match.venue?.name??match.venueName??formatDate(match.kickoffAt)}</small></Link>)}</div>;
+}
+
+function FixtureSection({title,description,state,page,onPage}:{title:string;description:string;state:{data:PagedMatches|null;error:string;loading:boolean};page:number;onPage:(page:number)=>void}){
+  const data=state.data;
+  return <section className="fixture-section"><div className="records-heading"><div><span className="eyebrow">{title.toUpperCase()}</span><h2>{title}</h2><p>{description}</p></div>{data&&<small>{data.total} match{data.total===1?'':'es'}</small>}</div>{state.loading?<Loading/>:state.error?<ErrorState text={state.error}/>:<><MatchList matches={data?.items??[]}/>{data&&data.pageCount>1&&<div className="pagination"><button disabled={page<=1} onClick={()=>onPage(page-1)}>Previous</button><span>Page {data.page} of {data.pageCount}</span><button disabled={page>=data.pageCount} onClick={()=>onPage(page+1)}>Next</button></div>}</>}</section>;
 }
 
 function SeasonFilter({competitions,value,onChange}:{competitions:Competition[];value:string;onChange:(value:string)=>void}){

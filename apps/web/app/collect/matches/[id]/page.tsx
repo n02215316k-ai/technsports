@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { AlertTriangle, ArrowLeft, CheckCircle2, Clock3, MapPin, Radio, Send, ShieldCheck, Trophy, UserCheck, WifiOff } from 'lucide-react';
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { submitOrQueue } from '@/lib/offline-queue';
 
@@ -23,7 +23,7 @@ export default function CollectorConsole(){
   const [eventType,setEventType]=useState('GOAL');
   const [minute,setMinute]=useState(0);
   const [team,setTeam]=useState('home');
-  const [playerId,setPlayerId]=useState('walter-musona');
+  const [playerId,setPlayerId]=useState('');
   const [unlistedName,setUnlistedName]=useState('');
   const [participants,setParticipants]=useState<Participant[]>([]);
   const [result,setResult]=useState<Result|null>(null);
@@ -51,11 +51,16 @@ export default function CollectorConsole(){
     fetch(`${api}/matches/${id}/participants`).then(r=>r.json()).then(data=>setParticipants(data.participants??[])).catch(()=>setError('Could not load participant candidates'));
   },[api,id]);
 
-  const teamPlayers=participants.filter(player=>player.teamId===team);
+  const teamPlayers=useMemo(()=>participants.filter(player=>player.teamId===team),[participants,team]);
+  const eventTypes=['GOAL','SHOT','TOUCH','FREE_KICK','CORNER','FOUL','PENALTY','YELLOW_CARD','RED_CARD','SUBSTITUTION','POSSESSION_INTERVAL','MATCH_ATTENDANCE'];
   const requiresPlayer=playerEvents.includes(eventType);
   const authorised=Boolean(user&&collectorRoles.includes(user.role));
-  const payload=()=>{const base={team};switch(eventType){case'GOAL':return{...base,scoringMethod:method,distanceMeters:distance,isPenalty};case'SHOT':return{...base,scoringMethod:method,distanceMeters:distance,outcome};case'TOUCH':return{...base,x,y};case'FREE_KICK':return{...base,distanceMeters:distance,outcome};case'CORNER':return{...base,side};case'FOUL':return{...base,fouledPlayerId:fouledPlayer,foulType};case'PENALTY':return{...base,scoringMethod:'RIGHT_FOOT',outcome};case'SUBSTITUTION':return{...base,playerOnId:playerOn,playerOffId:playerOff};case'POSSESSION_INTERVAL':return{...base,durationSeconds:duration};case'MATCH_ATTENDANCE':return{attendance,source:attendanceSource};default:return base}};
-  const submit=async(e:FormEvent)=>{e.preventDefault();if(!user||!authorised){setError('Sign in with a collector account before submitting match data.');return}setSending(true);setError('');try{const identity=requiresPlayer?(playerId==='__unlisted__'?{unlistedPlayerName:unlistedName,teamId:team}:{playerId}):{};const response=await submitOrQueue(`${api}/matches/${id}/observations`,{contributorId:user.id,eventType,matchSecond:minute*60,payload:payload(),clientEventId:`${user.id}-${id}-${eventKey}`,...identity});setResult(response as Result)}catch(reason){setError(reason instanceof Error?reason.message:'Submission failed')}finally{setSending(false)}};
+  useEffect(()=>{if(!requiresPlayer)return;if(playerId&&teamPlayers.some(player=>player.id===playerId))return;setPlayerId(teamPlayers[0]?.id??'')},[requiresPlayer,playerId,teamPlayers]);
+  const payloadFor=(type=eventType,teamValue=team)=>{const base={team:teamValue};switch(type){case'GOAL':return{...base,scoringMethod:method,distanceMeters:distance,isPenalty};case'SHOT':return{...base,scoringMethod:method,distanceMeters:distance,outcome};case'TOUCH':return{...base,x,y};case'FREE_KICK':return{...base,distanceMeters:distance,outcome};case'CORNER':return{...base,side};case'FOUL':return{...base,fouledPlayerId:fouledPlayer,foulType};case'PENALTY':return{...base,scoringMethod:'RIGHT_FOOT',outcome};case'SUBSTITUTION':return{...base,playerOnId:playerOn,playerOffId:playerOff};case'POSSESSION_INTERVAL':return{...base,durationSeconds:duration};case'MATCH_ATTENDANCE':return{attendance,source:attendanceSource};default:return base}};
+  const firstPlayerForTeam=(teamValue:string)=>participants.find(player=>player.teamId===teamValue)?.id??'';
+  const submitObservation=async(options?:{eventType?:string;team?:string;playerId?:string;clientEventId?:string})=>{if(!user||!authorised){setError('Sign in with a collector account before submitting match data.');return}const type=options?.eventType??eventType,teamValue=options?.team??team,subjectPlayer=options?.playerId??playerId;const typeRequiresPlayer=playerEvents.includes(type);if(typeRequiresPlayer&&!subjectPlayer){setError('Choose a player before recording this event.');return}setSending(true);setError('');try{const identity=typeRequiresPlayer?(subjectPlayer==='__unlisted__'?{unlistedPlayerName:unlistedName,teamId:teamValue}:{playerId:subjectPlayer}):{};const response=await submitOrQueue(`${api}/matches/${id}/observations`,{contributorId:user.id,eventType:type,matchSecond:minute*60,payload:payloadFor(type,teamValue),clientEventId:options?.clientEventId??`${user.id}-${id}-${eventKey}`,...identity});setResult(response as Result)}catch(reason){setError(reason instanceof Error?reason.message:'Submission failed')}finally{setSending(false)}};
+  const submit=async(e:FormEvent)=>{e.preventDefault();await submitObservation()};
+  const quickSubmit=(type:string,teamValue=team)=>{const subject=playerEvents.includes(type)?(teamValue===team&&playerId?playerId:firstPlayerForTeam(teamValue)):undefined;setEventType(type);setTeam(teamValue);if(subject)setPlayerId(subject);void submitObservation({eventType:type,team:teamValue,playerId:subject,clientEventId:`${user?.id??'collector'}-${id}-${type}-${teamValue}-${subject??'team'}-${Date.now()}`})};
   const playerOptions=(value:string,setter:(value:string)=>void,label:string)=><label>{label}<select value={value} onChange={e=>setter(e.target.value)}>{teamPlayers.map(player=><option key={player.id} value={player.id}>{player.name}</option>)}</select></label>;
 
   return <main className="page-shell collector-shell">
@@ -78,6 +83,24 @@ export default function CollectorConsole(){
 
     <div className="collector-layout"><form className="collector-form" onSubmit={submit}>
       <div className="collector-form-heading wide"><span>NEW OBSERVATION</span><small>{home} vs {away} · {id}</small></div>
+      <div className="tap-panel wide">
+        <span>FAST EVENT BUTTONS</span>
+        <div className="event-tap-grid">{eventTypes.map(type=><button type="button" className={eventType===type?'on':''} onClick={()=>{setEventType(type);setResult(null)}} key={type}>{type.replace('_',' ')}</button>)}</div>
+      </div>
+      {eventType!=='MATCH_ATTENDANCE'&&<div className="tap-panel wide">
+        <span>TEAM</span>
+        <div className="team-tap-grid"><button type="button" className={team==='home'?'on home':''} onClick={()=>setTeam('home')}>{home}</button><button type="button" className={team==='away'?'on away':''} onClick={()=>setTeam('away')}>{away}</button></div>
+      </div>}
+      <div className="quick-capture wide">
+        <button type="button" onClick={()=>quickSubmit('TOUCH','home')} disabled={sending||!authorised}>+ Touch {home}</button>
+        <button type="button" onClick={()=>quickSubmit('TOUCH','away')} disabled={sending||!authorised}>+ Touch {away}</button>
+        <button type="button" onClick={()=>quickSubmit('SHOT',team)} disabled={sending||!authorised}>+ Shot selected team</button>
+        <button type="button" onClick={()=>quickSubmit('FOUL',team)} disabled={sending||!authorised}>+ Foul selected team</button>
+      </div>
+      {requiresPlayer&&<div className="tap-panel wide">
+        <span>PLAYER TAP TARGETS</span>
+        <div className="player-chip-grid">{teamPlayers.map(player=><button type="button" className={playerId===player.id?'on':''} onClick={()=>setPlayerId(player.id)} key={player.id}>{player.shirtNumber&&<small>{player.shirtNumber}</small>}<b>{player.name}</b><em>{player.position}</em></button>)}<button type="button" className={playerId==='__unlisted__'?'on':''} onClick={()=>setPlayerId('__unlisted__')}>Player not listed</button></div>
+      </div>}
       <label>Event type<select value={eventType} onChange={e=>{setEventType(e.target.value);setResult(null)}}><option>GOAL</option><option>SHOT</option><option>TOUCH</option><option>FREE_KICK</option><option>CORNER</option><option>FOUL</option><option>PENALTY</option><option>YELLOW_CARD</option><option>RED_CARD</option><option>SUBSTITUTION</option><option>POSSESSION_INTERVAL</option><option>MATCH_ATTENDANCE</option></select></label>
       <label>Match minute<input type="number" min="0" max="130" value={minute} onChange={e=>setMinute(Number(e.target.value))}/></label>
       {eventType!=='MATCH_ATTENDANCE'&&<label>Team<select value={team} onChange={e=>{setTeam(e.target.value);setPlayerId('')}}><option value="home">{home}</option><option value="away">{away}</option></select></label>}

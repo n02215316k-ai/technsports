@@ -40,3 +40,25 @@ test('ticket validation checks in issued tickets only once',async()=>{
   assert.equal(repeat.valid,false);
   assert.equal(repeat.reason,'ALREADY_CHECKED_IN');
 });
+
+test('successful payment webhook marks an order paid and issues tickets',async()=>{
+  const previous=process.env.PAYMENT_WEBHOOK_SECRET;
+  process.env.PAYMENT_WEBHOOK_SECRET='test-webhook-secret';
+  let markedPaid=false;
+  const db={
+    ticketOrder:{
+      findUnique:async({where})=>{
+        if(where.publicRef==='TS-1')return{id:'o1',publicRef:'TS-1',amountMinor:500,currency:'USD',status:'PENDING_PAYMENT'};
+        if(where.id==='o1')return{id:'o1',publicRef:'TS-1',matchId:'m1',buyerName:'Buyer',buyerEmail:'buyer@example.com',items:[],tickets:[],match:{}};
+        return null;
+      },
+      update:async()=>{markedPaid=true;return{}}
+    }
+  };
+  const service=new TicketingService(db);
+  const result=await service.paymentWebhook('generic',{publicRef:'TS-1',status:'SUCCESS',paymentReference:'gw-123',amountMinor:500,currency:'USD'},{'x-technsports-webhook-secret':'test-webhook-secret'});
+  assert.equal(result.accepted,true);
+  assert.equal(result.processed,true);
+  assert.equal(markedPaid,true);
+  if(previous===undefined)delete process.env.PAYMENT_WEBHOOK_SECRET;else process.env.PAYMENT_WEBHOOK_SECRET=previous;
+});

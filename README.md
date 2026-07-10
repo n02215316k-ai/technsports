@@ -78,6 +78,18 @@ For real delivery, configure SPF, DKIM and DMARC for the domain used by `EMAIL_F
 
 The club form supports name, short name, city, founded year, website, brand colours and a logo. Logos can be uploaded as validated JPG, PNG or WebP files or supplied as a trusted URL. The resulting `crestUrl` is stored on `Team` and returned through all public team and fixture APIs.
 
+## Fixtures, league table and ticket payments
+
+The public fixtures page uses paginated match data from `/api/v1/public/matches-page`, with upcoming and finished matches separated. The league table is not manually edited: `/api/v1/public/standings/:seasonId` recalculates played, wins, draws, losses, goals, goal difference, points and last-five form from fixtures marked `FINISHED`.
+
+Ticket orders can be paid manually by an admin or automatically through payment webhooks. Configure `PAYMENT_WEBHOOK_SECRET` or a provider-specific secret such as `PAYNOW_WEBHOOK_SECRET`, then point the gateway to:
+
+```txt
+POST /api/v1/tickets/webhooks/:provider
+```
+
+Send `publicRef`, successful `status`, optional `paymentReference`, `amountMinor` and `currency`, with the shared secret in `X-TechnSports-Webhook-Secret`. Successful webhooks mark the ticket order paid and issue QR tickets.
+
 ## Production
 
 For a single-server Docker deployment, use `docker-compose.prod.yml` with Caddy HTTPS:

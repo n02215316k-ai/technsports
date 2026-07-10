@@ -16,7 +16,7 @@ async function bootstrap() {
   app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads/' });
   app.setGlobalPrefix('api/v1');
   const allowed=(process.env.CORS_ORIGINS??'http://localhost:3000').split(',').map(value=>value.trim());
-  app.enableCors({origin:(origin,callback)=>callback(null,!origin||allowed.includes(origin)),credentials:true,methods:['GET','POST','PATCH','DELETE'],allowedHeaders:['Content-Type','X-Admin-Key']});
+  app.enableCors({origin:(origin,callback)=>callback(null,!origin||allowed.includes(origin)),credentials:true,methods:['GET','POST','PATCH','DELETE'],allowedHeaders:['Content-Type','X-Admin-Key','X-TechnSports-Webhook-Secret','X-Webhook-Secret','X-Paynow-Signature']});
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted:true, transform: true }));
   await app.listen(process.env.PORT ?? 4000, '0.0.0.0');
 }

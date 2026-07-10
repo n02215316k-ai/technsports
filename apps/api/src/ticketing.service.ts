@@ -1,10 +1,11 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import { TicketOrderStatus, TicketStatus } from '@prisma/client';
 import { PrismaService } from './prisma.service';
 
 export type TicketProductInput={matchId:string;name:string;description?:string;priceMinor:number;currency:string;quantityTotal:number;perOrderLimit?:number;saleStartsAt?:string;saleEndsAt?:string;gate?:string;section?:string;active?:boolean};
 export type CreateOrderInput={matchId:string;buyerName:string;buyerEmail:string;buyerPhone?:string;paymentMethod:string;items:{productId:string;quantity:number}[]};
+export type PaymentWebhookInput={publicRef:string;status:string;paymentReference?:string;amountMinor?:number;currency?:string};
 
 @Injectable()
 export class TicketingService {
@@ -73,6 +74,22 @@ export class TicketingService {
     return this.issueTickets(order.id);
   }
 
+  async paymentWebhook(provider:string,input:PaymentWebhookInput,headers:Record<string,string|string[]|undefined>){
+    const name=provider.trim().toUpperCase().replace(/[^A-Z0-9_]/g,'_');
+    const configured=process.env[`${name}_WEBHOOK_SECRET`]||process.env.PAYMENT_WEBHOOK_SECRET;
+    if(!configured||configured.includes('replace-with'))throw new BadRequestException('Payment webhook secret is not configured');
+    const received=this.header(headers,'x-technsports-webhook-secret')||this.header(headers,'x-webhook-secret')||this.header(headers,'x-paynow-signature');
+    if(received!==configured)throw new UnauthorizedException('Invalid payment webhook signature');
+    const status=input.status.trim().toUpperCase();
+    if(!['PAID','SUCCESS','COMPLETED','CONFIRMED'].includes(status))return{accepted:true,processed:false,status,reason:'Payment is not successful'};
+    const order=await this.db.ticketOrder.findUnique({where:{publicRef:input.publicRef}});
+    if(!order)throw new NotFoundException('Ticket order not found');
+    if(input.amountMinor!==undefined&&input.amountMinor!==order.amountMinor)throw new BadRequestException('Payment amount does not match ticket order');
+    if(input.currency&&input.currency.toUpperCase()!==order.currency)throw new BadRequestException('Payment currency does not match ticket order');
+    const updated=await this.markPaid(input.publicRef,input.paymentReference??`${name}-WEBHOOK`);
+    return{accepted:true,processed:true,provider:name,order:updated};
+  }
+
   async validate(ticketCode:string,device?:string){
     const ticket=await this.db.ticket.findUnique({where:{ticketCode},include:{match:{include:{homeTeam:true,awayTeam:true,venue:true}},product:true,order:true}});
     if(!ticket)throw new NotFoundException('Ticket not found');
@@ -106,6 +123,7 @@ export class TicketingService {
   }
 
   private onSale(product:{saleStartsAt:Date|null;saleEndsAt:Date|null;active:boolean},now:Date){return product.active&&(!product.saleStartsAt||product.saleStartsAt<=now)&&(!product.saleEndsAt||product.saleEndsAt>=now)}
+  private header(headers:Record<string,string|string[]|undefined>,key:string){const value=headers[key]??headers[key.toLowerCase()];return Array.isArray(value)?value[0]:value}
   private ref(){return `TS-${Date.now().toString(36).toUpperCase()}-${randomBytes(3).toString('hex').toUpperCase()}`}
   private ticketCode(){return `TKT-${randomBytes(12).toString('hex').toUpperCase()}`}
 }
