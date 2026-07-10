@@ -20,7 +20,7 @@ export function Header() {
   const loadUser=useCallback(()=>{fetch(`${api}/auth/me`,{credentials:'include'}).then(r=>r.json()).then(data=>setUser(data.user??null)).catch(()=>setUser(null))},[api]);
   useEffect(()=>{loadUser();window.addEventListener('technsports-auth-change',loadUser);return()=>window.removeEventListener('technsports-auth-change',loadUser)},[loadUser]);
   useEffect(()=>{fetch(`${api}/public/matches?limit=80`).then(r=>r.json()).then((matches:{status:string}[])=>setLiveCount(matches.filter(match=>match.status==='LIVE').length)).catch(()=>setLiveCount(null))},[api]);
-  const opsNav=useMemo(()=>{const role=user?.role;const links:string[][]=[];if(role&&['COLLECTOR','REVIEWER','EDITOR','ADMIN'].includes(role))links.push(['Collect','/contribute']);if(role&&['REVIEWER','EDITOR','ADMIN'].includes(role))links.push(['Review','/review']);if(role&&['EDITOR','ADMIN'].includes(role))links.push(['Write','/admin/articles/new']);if(role==='ADMIN')links.push(['Admin','/admin']);return links},[user]);
+  const opsNav=useMemo(()=>{const role=user?.role;const links:string[][]=[];if(role&&['COLLECTOR','REVIEWER','EDITOR','ADMIN'].includes(role)){links.push(['Collect','/contribute']);links.push(['Analysis','/contribute/articles'])}if(role&&['REVIEWER','EDITOR','ADMIN'].includes(role))links.push(['Review','/review']);if(role&&['EDITOR','ADMIN'].includes(role))links.push(['Write','/admin/articles/new']);if(role==='ADMIN')links.push(['Admin','/admin']);return links},[user]);
   const actionHref=user?'/account':'/signup';
   const actionLabel=user&&['COLLECTOR','REVIEWER','EDITOR','ADMIN'].includes(user.role)?'Workspace':user?'Account':'Join network';
   return <><OfflineManager/>

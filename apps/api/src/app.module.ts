@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { HealthController, MatchesController, ContributionsController, StatisticsController, ContributorWorkspaceController } from './controllers';
+import { HealthController, MatchesController, ContributionsController, StatisticsController, ContributorWorkspaceController, ArticleInteractionController } from './controllers';
 import { ConsensusService } from './consensus.service';
 import { StatisticsService } from './statistics.service';
 import { IdentityService } from './identity.service';
@@ -20,5 +20,5 @@ import { PublicDataService } from './public-data.service';
 import { AdminTicketingController, TicketingController } from './ticketing.controller';
 import { TicketingService } from './ticketing.service';
 
-@Module({ imports:[ThrottlerModule.forRoot([{ttl:60000,limit:120}])],controllers: [HealthController, AuthController, PublicDataController, MatchesController, ContributionsController, ContributorWorkspaceController, StatisticsController, TransferContributionController, TicketingController, AdminTicketingController, AdministrationController, CatalogController], providers: [AuthService, EmailService, AssetService, PublicDataService, RoleGuard, ConsensusService, StatisticsService, IdentityService, EventValidationService, TransferContributionService, TicketingService, AdministrationService, PrismaService, AdminKeyGuard,{provide:APP_GUARD,useClass:ThrottlerGuard}] })
+@Module({ imports:[ThrottlerModule.forRoot([{ttl:60000,limit:120}])],controllers: [HealthController, AuthController, PublicDataController, MatchesController, ContributionsController, ContributorWorkspaceController, ArticleInteractionController, StatisticsController, TransferContributionController, TicketingController, AdminTicketingController, AdministrationController, CatalogController], providers: [AuthService, EmailService, AssetService, PublicDataService, RoleGuard, ConsensusService, StatisticsService, IdentityService, EventValidationService, TransferContributionService, TicketingService, AdministrationService, PrismaService, AdminKeyGuard,{provide:APP_GUARD,useClass:ThrottlerGuard}] })
 export class AppModule {}

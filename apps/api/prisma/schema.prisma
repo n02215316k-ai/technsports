@@ -86,6 +86,10 @@ model User {
   assignments Assignment[]
   observations Observation[]
   ticketOrders TicketOrder[]
+  authoredArticles Article[] @relation("ArticleAuthor")
+  approvedArticles Article[] @relation("ArticleApprover")
+  articleComments ArticleComment[]
+  articleReactions ArticleReaction[]
   contributorProfile ContributorProfile?
   sessions AuthSession[]
   createdAt DateTime @default(now())
@@ -247,6 +251,7 @@ model Match {
   ticketProducts TicketProduct[]
   ticketOrders TicketOrder[]
   tickets Ticket[]
+  articles Article[]
   venue Venue? @relation(fields: [venueId], references: [id])
   participants MatchParticipant[]
   @@index([seasonId, kickoffAt])
@@ -470,12 +475,28 @@ model Article {
   body Json
   category String @default("NEWS")
   authorName String @default("TechnSports Data Desk")
+  authorUserId String?
+  matchId String?
   coverImageUrl String?
   status String @default("DRAFT")
+  source String @default("EDITORIAL")
+  autoApproved Boolean @default(false)
+  approvedById String?
+  approvedAt DateTime?
+  moderationNote String?
+  deletedAt DateTime?
   publishedAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  authorUser User? @relation("ArticleAuthor", fields: [authorUserId], references: [id])
+  approvedBy User? @relation("ArticleApprover", fields: [approvedById], references: [id])
+  match Match? @relation(fields: [matchId], references: [id])
   players ArticlePlayer[]
+  comments ArticleComment[]
+  reactions ArticleReaction[]
+  @@index([status, publishedAt])
+  @@index([matchId, status])
+  @@index([authorUserId, status])
 }
 
 model ArticlePlayer {
@@ -485,4 +506,37 @@ model ArticlePlayer {
   article Article @relation(fields: [articleId], references: [id])
   player Player @relation(fields: [playerId], references: [id])
   @@id([articleId, playerId])
+}
+
+model ArticleComment {
+  id String @id @default(cuid())
+  articleId String
+  userId String
+  body String
+  status String @default("PUBLISHED")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+  @@index([articleId, createdAt])
+  @@index([userId, createdAt])
+}
+
+model ArticleReaction {
+  id String @id @default(cuid())
+  articleId String
+  userId String
+  value Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+  @@unique([articleId, userId])
+  @@index([articleId, value])
+}
+
+model SiteSetting {
+  key String @id
+  value Json
+  updatedAt DateTime @updatedAt
 }

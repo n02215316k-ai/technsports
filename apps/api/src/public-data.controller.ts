@@ -14,6 +14,7 @@ export class PublicDataController {
   @Get('teams/:slug')team(@Param('slug')slug:string){return this.data.team(slug)}
   @Get('transfers')transfers(){return this.data.transfers()}
   @Get('articles')articles(){return this.data.articles()}
+  @Get('articles/:slug')article(@Param('slug')slug:string){return this.data.article(slug)}
   @Get('contributors')contributors(){return this.data.contributors()}
   @Get('contributors/:id')contributor(@Param('id')id:string){return this.data.contributor(id)}
   @Get('search')search(@Query('q')q=''){return this.data.search(q)}

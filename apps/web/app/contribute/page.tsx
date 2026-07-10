@@ -55,7 +55,7 @@ export default function Contribute(){
         {error&&<div className="admin-error">{error}</div>}
 
         {authorised&&<>
-          <div className="workspace-actions"><Link href="/contribute/transfers">Report transfer <ArrowRight/></Link>{user&&['REVIEWER','EDITOR','ADMIN'].includes(user.role)&&<Link href="/review">Review queue <ArrowRight/></Link>}{user&&['EDITOR','ADMIN'].includes(user.role)&&<Link href="/admin/articles/new">Write article <ArrowRight/></Link>}{user?.role==='ADMIN'&&<Link href="/admin">Admin console <ArrowRight/></Link>}</div>
+          <div className="workspace-actions"><Link href="/contribute/articles">Write match analysis <ArrowRight/></Link><Link href="/contribute/transfers">Report transfer <ArrowRight/></Link>{user&&['REVIEWER','EDITOR','ADMIN'].includes(user.role)&&<Link href="/review">Review queue <ArrowRight/></Link>}{user&&['EDITOR','ADMIN'].includes(user.role)&&<Link href="/admin/articles/new">Write editorial article <ArrowRight/></Link>}{user?.role==='ADMIN'&&<Link href="/admin">Admin console <ArrowRight/></Link>}</div>
           <div className="records-heading"><div><span className="eyebrow">ASSIGNED MATCHES</span><h2>Your match work</h2></div></div>
           <div className="assignment-list">{assignments.length?assignments.map(item=><MatchWorkCard key={item.id} match={item.match} scope={item.scope} observations={item.observations}/>):<div className="empty-state"><Radio/><b>No assigned matches yet</b><span>You can still open available fixtures below if your role allows collection.</span></div>}</div>
 

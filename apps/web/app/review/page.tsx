@@ -7,12 +7,13 @@ import { FormEvent, useCallback, useEffect, useState } from 'react';
 type Observation={id:string;eventType:string;status:string;matchSecond:number;subjectId?:string;player?:{legalName:string;knownAs?:string};contributor?:{username?:string;displayName:string};match:{id:string;homeTeam:{name:string};awayTeam:{name:string}};identityClaim?:{id:string;suppliedName:string}};
 type TransferClaim={id:string;playerId:string;fromTeamId?:string;toTeamId:string;type:string;status:string;sourceUrl:string;feeMinor?:string};
 type IdentityClaim={id:string;suppliedName:string;status:string;createdAt:string;team:{name:string};season:{label:string};observations:{id:string;eventType:string;contributor?:{username?:string;displayName:string};match:{homeTeam:{name:string};awayTeam:{name:string}}}[]};
-type Queue={observations:Observation[];transfers:TransferClaim[];identityClaims:IdentityClaim[]};
+type ReviewArticle={id:string;slug:string;title:string;excerpt:string;body?:{text?:string};status:string;authorName:string;createdAt:string;match?:{homeTeam:{name:string};awayTeam:{name:string}};authorUser?:{username?:string;displayName:string;role:string};_count:{comments:number;reactions:number}};
+type Queue={observations:Observation[];transfers:TransferClaim[];identityClaims:IdentityClaim[];articles:ReviewArticle[];settings?:{contributorArticleAutoApprove:boolean}};
 
 export default function Review(){
   const api=process.env.NEXT_PUBLIC_API_URL||'http://localhost:4000/api/v1';
   const [user,setUser]=useState<any>();
-  const [queue,setQueue]=useState<Queue>({observations:[],transfers:[],identityClaims:[]});
+  const [queue,setQueue]=useState<Queue>({observations:[],transfers:[],identityClaims:[],articles:[]});
   const [notice,setNotice]=useState('');
   const [error,setError]=useState('');
 
@@ -22,7 +23,7 @@ export default function Review(){
       const me=await fetch(`${api}/auth/me`,{credentials:'include'}).then(r=>r.json());
       setUser(me.user??null);
       const response=await fetch(`${api}/admin/review`,{credentials:'include'});
-      const data=await response.json().catch(()=>({observations:[],transfers:[],identityClaims:[]}));
+      const data=await response.json().catch(()=>({observations:[],transfers:[],identityClaims:[],articles:[]}));
       if(!response.ok)throw new Error(data.message||'Reviewer access required');
       setQueue(data);
     }catch(e){setError(e instanceof Error?e.message:'Could not load review queue')}
@@ -41,6 +42,8 @@ export default function Review(){
   return <main className="page-shell">
     <div className="directory-head"><span className="eyebrow">DATA REVIEW</span><h1>Review queue</h1><p>Approve consensus data, resolve disputed events, reject bad submissions, and map unlisted player claims to canonical player records.</p></div>
     {notice&&<div className="admin-notice"><CheckCircle2/>{notice}</div>}{error&&<div className="admin-error">{error}</div>}
+
+    <section className="review-panel"><header><span className="eyebrow">CONTRIBUTOR ARTICLES</span><h2>Match analysis moderation</h2></header><div className="review-setting"><span><b>Auto-approve contributor match analysis</b><small>{queue.settings?.contributorArticleAutoApprove?'New eligible contributor posts publish immediately.':'New contributor posts wait for manual approval.'}</small></span><button className={queue.settings?.contributorArticleAutoApprove?'danger':''} onClick={()=>act('/admin/review/articles/auto-approve',{enabled:!queue.settings?.contributorArticleAutoApprove})}>{queue.settings?.contributorArticleAutoApprove?'Disable':'Enable'}</button></div><div className="review-list review-list-actions article-review-list">{queue.articles.map(item=><article key={item.id}><span>{item.status}</span><b>{item.title}</b><p>{item.excerpt}<small>{item.match?`${item.match.homeTeam.name} v ${item.match.awayTeam.name}`:'Match not linked'} · @{item.authorUser?.username||item.authorName} · {item._count.comments} comments</small><details><summary>Read submission</summary>{item.body?.text}</details></p>{item.status==='PUBLISHED'?<Link href={`/news/${item.slug}`} target="_blank"><ExternalLink/> View</Link>:<span>Pending</span>}<button onClick={()=>act(`/admin/review/articles/${item.id}/approve`)}><CheckCircle2/>Approve</button><button className="danger" onClick={()=>act(`/admin/review/articles/${item.id}/reject`,{reason:'Needs editorial revision'})}><XCircle/>Reject</button><button className="danger" onClick={()=>act(`/admin/review/articles/${item.id}/delete`,{reason:'Deleted by moderator'})}><XCircle/>Delete</button></article>)}{!queue.articles.length&&<Empty label="No contributor articles need review."/>}</div></section>
 
     <section className="review-panel"><header><span className="eyebrow">MATCH EVENTS</span><h2>Pending and conflicted observations</h2></header><div className="review-list review-list-actions">{queue.observations.map(item=><article key={item.id}><span>{item.status}</span><b>{item.eventType}</b><p>{item.match.homeTeam.name} v {item.match.awayTeam.name}<small>{item.player?.knownAs||item.player?.legalName||item.identityClaim?.suppliedName||item.subjectId||'Team event'} · {item.matchSecond}s · @{item.contributor?.username||'collector'}</small></p><button onClick={()=>act(`/admin/review/observations/${item.id}/approve`)}><CheckCircle2/>Approve</button><button className="danger" onClick={()=>act(`/admin/review/observations/${item.id}/reject`)}><XCircle/>Reject</button></article>)}{!queue.observations.length&&<Empty label="No observations need review."/>}</div></section>
 

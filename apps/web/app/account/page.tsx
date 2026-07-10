@@ -14,6 +14,7 @@ export default function Account(){
   if(!user)return <main className="page-shell auth-required"><UserRound/><h1>Sign in required</h1><Link href="/signin">Sign in</Link></main>;
   const tools=[
     {roles:['COLLECTOR','REVIEWER','EDITOR','ADMIN'],href:'/contribute',label:'Contributor workbench',icon:<ClipboardCheck/>},
+    {roles:['COLLECTOR','REVIEWER','EDITOR','ADMIN'],href:'/contribute/articles',label:'Write match analysis',icon:<FileEdit/>},
     {roles:['COLLECTOR','REVIEWER','EDITOR','ADMIN'],href:'/contribute/transfers',label:'Submit transfer report',icon:<BookOpen/>},
     {roles:['REVIEWER','EDITOR','ADMIN'],href:'/review',label:'Review queue',icon:<ShieldCheck/>},
     {roles:['EDITOR','ADMIN'],href:'/admin/articles/new',label:'Write article',icon:<FileEdit/>},

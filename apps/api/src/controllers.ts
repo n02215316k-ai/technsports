@@ -1,6 +1,6 @@
-import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { MatchStatus, Prisma, SubmissionStatus } from '@prisma/client';
-import { IsInt, IsObject, IsOptional, IsString, Min } from 'class-validator';
+import { IsIn, IsInt, IsObject, IsOptional, IsString, Length, Min } from 'class-validator';
 import { ConsensusService, Observation as ConsensusObservation } from './consensus.service';
 import { PrismaService } from './prisma.service';
 import { IdentityService } from './identity.service';
@@ -8,6 +8,9 @@ import { EventValidationService } from './event-validation.service';
 import { RequireRoles, RoleGuard } from './auth.controller';
 
 class SubmitObservationDto {@IsOptional() @IsString() contributorId?:string;@IsString() eventType!:string;@IsInt() @Min(0) matchSecond!:number;@IsOptional() @IsString() playerId?:string;@IsOptional() @IsString() unlistedPlayerName?:string;@IsOptional() @IsString() teamId?:string;@IsObject() payload!:Record<string,unknown>;@IsString() clientEventId!:string}
+class ContributorArticleDto{@IsString() matchId!:string;@IsString() @Length(5,180) title!:string;@IsString() @Length(20,400) excerpt!:string;@IsString() @Length(50,50000) body!:string;@IsOptional() @IsString() coverImageUrl?:string}
+class ArticleReactionDto{@IsIn([1,-1]) value!:1|-1}
+class ArticleCommentDto{@IsString() @Length(2,1200) body!:string}
 
 @Controller('health')
 export class HealthController {constructor(private readonly db:PrismaService){}@Get()async check(){await this.db.$queryRaw`SELECT 1`;return{status:'ok',service:'technsports-api',database:'connected',timestamp:new Date().toISOString()}}}
@@ -53,6 +56,53 @@ export class ContributorWorkspaceController {
       take:120
     });
     return matches;
+  }
+  @Get('article-matches')
+  async articleMatches(@Req() request:any){
+    const userId=request.user.id;
+    return this.db.match.findMany({where:{OR:[{assignments:{some:{userId}}},{observations:{some:{contributorId:userId}}}]},include:{homeTeam:true,awayTeam:true,venue:true,season:{include:{competition:true}},_count:{select:{observations:{where:{contributorId:userId}},articles:{where:{authorUserId:userId,deletedAt:null}}}}},orderBy:{kickoffAt:'desc'},take:100});
+  }
+  @Post('articles')
+  async createArticle(@Req() request:any,@Body() dto:ContributorArticleDto){
+    const user=request.user;
+    const eligible=await this.db.match.findFirst({where:{id:dto.matchId,OR:[{assignments:{some:{userId:user.id}}},{observations:{some:{contributorId:user.id}}}]},include:{homeTeam:true,awayTeam:true,season:{include:{competition:true}}}});
+    if(!eligible)throw new BadRequestException('You can only write match analysis for matches you were assigned to or contributed data to');
+    const setting=await this.db.siteSetting.findUnique({where:{key:'contributorArticleAutoApprove'}});
+    const auto=Boolean((setting?.value as any)?.enabled);
+    const slug=await this.uniqueSlug(`${dto.title}-${eligible.homeTeam.name}-${eligible.awayTeam.name}`);
+    return this.db.article.create({data:{slug,title:dto.title.trim(),excerpt:dto.excerpt.trim(),body:{format:'plain_text',text:dto.body.trim()},category:'MATCH ANALYSIS',status:auto?'PUBLISHED':'PENDING',source:'CONTRIBUTOR',autoApproved:auto,publishedAt:auto?new Date():null,approvedAt:auto?new Date():null,authorName:user.displayName,authorUserId:user.id,matchId:dto.matchId,coverImageUrl:dto.coverImageUrl?.trim()||undefined},include:{match:{include:{homeTeam:true,awayTeam:true}},authorUser:{select:{id:true,username:true,displayName:true}}}});
+  }
+  private slug(value:string){return value.toLowerCase().trim().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,120)||`analysis-${Date.now()}`}
+  private async uniqueSlug(value:string){const base=this.slug(value);let slug=base,index=2;while(await this.db.article.findUnique({where:{slug}})){slug=`${base}-${index++}`}return slug}
+}
+
+@Controller('articles')
+export class ArticleInteractionController {
+  constructor(private readonly db:PrismaService){}
+  @Get(':slug/discussion')
+  async discussion(@Param('slug') slug:string){
+    const article=await this.db.article.findFirst({where:{slug,status:'PUBLISHED',deletedAt:null},select:{id:true}});
+    if(!article)return{likes:0,dislikes:0,comments:[]};
+    const [likes,dislikes,comments]=await Promise.all([
+      this.db.articleReaction.count({where:{articleId:article.id,value:1}}),
+      this.db.articleReaction.count({where:{articleId:article.id,value:-1}}),
+      this.db.articleComment.findMany({where:{articleId:article.id,status:'PUBLISHED'},include:{user:{select:{username:true,displayName:true,role:true}}},orderBy:{createdAt:'desc'},take:50})
+    ]);
+    return{likes,dislikes,comments};
+  }
+  @Post(':slug/reactions') @UseGuards(RoleGuard) @RequireRoles('SUPPORTER','COLLECTOR','REVIEWER','EDITOR','ADMIN')
+  async react(@Param('slug') slug:string,@Body() dto:ArticleReactionDto,@Req() request:any){
+    const article=await this.db.article.findFirst({where:{slug,status:'PUBLISHED',deletedAt:null}});
+    if(!article)throw new BadRequestException('Published article not found');
+    await this.db.articleReaction.upsert({where:{articleId_userId:{articleId:article.id,userId:request.user.id}},update:{value:dto.value},create:{articleId:article.id,userId:request.user.id,value:dto.value}});
+    return this.discussion(slug);
+  }
+  @Post(':slug/comments') @UseGuards(RoleGuard) @RequireRoles('SUPPORTER','COLLECTOR','REVIEWER','EDITOR','ADMIN')
+  async comment(@Param('slug') slug:string,@Body() dto:ArticleCommentDto,@Req() request:any){
+    const article=await this.db.article.findFirst({where:{slug,status:'PUBLISHED',deletedAt:null}});
+    if(!article)throw new BadRequestException('Published article not found');
+    await this.db.articleComment.create({data:{articleId:article.id,userId:request.user.id,body:dto.body.trim()}});
+    return this.discussion(slug);
   }
 }
 

@@ -20,6 +20,7 @@ class LineupDto{@IsString() teamId!:string;@IsArray() @IsString({each:true}) pla
 class AssignmentDto{@IsString() matchId!:string;@IsString() userId!:string;@IsIn(['LINEUPS','TIMELINE','PLAYER_ACTIONS','TEAM_STATS','MEDIA']) scope!:'LINEUPS'|'TIMELINE'|'PLAYER_ACTIONS'|'TEAM_STATS'|'MEDIA'}
 class ResolveIdentityDto{@IsString() playerId!:string}
 class RejectDto{@IsOptional() @IsString() reason?:string}
+class AutoApproveDto{@IsIn([true,false]) enabled!:boolean}
 
 @Injectable()
 export class AdminKeyGuard implements CanActivate {
@@ -29,6 +30,7 @@ export class AdminKeyGuard implements CanActivate {
     const user=await this.auth.fromRequest(request);
     const editorial=/\/admin\/(articles|uploads\/cover)(?:\/|$)/.test(request.originalUrl??request.url??'');
     const review=/\/admin\/review(?:\/|$)/.test(request.originalUrl??request.url??'');
+    if(user)request.user=user;
     if(user?.role==='ADMIN'||(editorial&&user?.role==='EDITOR'))return true;
     if(review&&(user?.role==='REVIEWER'||user?.role==='EDITOR'))return true;
     const expected=process.env.ADMIN_API_KEY;
@@ -63,6 +65,10 @@ export class AdministrationController {
   @Post('review/transfers/:id/reject') rejectTransfer(@Param('id') id:string,@Body() dto:RejectDto){return this.admin.rejectTransfer(id,dto.reason)}
   @Post('review/identity-claims/:id/resolve') resolveIdentity(@Param('id') id:string,@Body() dto:ResolveIdentityDto){return this.admin.resolveIdentityClaim(id,dto.playerId)}
   @Post('review/identity-claims/:id/reject') rejectIdentity(@Param('id') id:string,@Body() dto:RejectDto){return this.admin.rejectIdentityClaim(id,dto.reason)}
+  @Post('review/articles/:id/approve') approveArticle(@Param('id') id:string,@Req() request:any){return this.admin.approveArticle(id,request.user?.id)}
+  @Post('review/articles/:id/reject') rejectArticle(@Param('id') id:string,@Body() dto:RejectDto){return this.admin.rejectArticle(id,dto.reason)}
+  @Post('review/articles/:id/delete') deleteArticle(@Param('id') id:string,@Body() dto:RejectDto){return this.admin.deleteArticle(id,dto.reason)}
+  @Post('review/articles/auto-approve') setArticleAutoApprove(@Body() dto:AutoApproveDto){return this.admin.setContributorArticleAutoApprove(dto.enabled)}
   @Post('uploads/cover') @UseInterceptors(FileInterceptor('file',{limits:{fileSize:5*1024*1024}}))
   uploadCover(@UploadedFile() file:any,@Req() request:any){const saved=this.assets.saveImage(file,'covers');return {...saved,url:this.publicUrl(request,saved.path)}}
   @Post('uploads/team-logo') @UseInterceptors(FileInterceptor('file',{limits:{fileSize:5*1024*1024}}))
