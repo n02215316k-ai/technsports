@@ -58,7 +58,8 @@ export default function AdminPage(){
   };
   const handle=async(e:FormEvent<HTMLFormElement>,action:(data:FormData)=>Promise<void>,success:string)=>{
     e.preventDefault();
-    try{await action(new FormData(e.currentTarget));setNotice(success);e.currentTarget.reset();await load()}
+    const form=e.currentTarget;
+    try{await action(new FormData(form));setNotice(success);form.reset();await load()}
     catch(err){setError(err instanceof Error?err.message:'Operation failed')}
   };
   const uploadLogo=async(file?:File)=>{

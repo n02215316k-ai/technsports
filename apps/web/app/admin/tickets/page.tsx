@@ -28,12 +28,13 @@ export default function AdminTicketsPage(){
   const headers=()=>({'Content-Type':'application/json',...(key?{'x-admin-key':key}:{})});
   const submitProduct=async(e:FormEvent<HTMLFormElement>)=>{
     e.preventDefault();setError('');setNotice('');
-    const form=new FormData(e.currentTarget);
+    const element=e.currentTarget;
+    const form=new FormData(element);
     const payload={matchId,name:form.get('name'),description:form.get('description')||undefined,priceMinor:Math.round(Number(form.get('price'))*100),currency:form.get('currency')||'USD',quantityTotal:Number(form.get('quantityTotal')),perOrderLimit:Number(form.get('perOrderLimit')||10),saleStartsAt:form.get('saleStartsAt')?new Date(String(form.get('saleStartsAt'))).toISOString():undefined,saleEndsAt:form.get('saleEndsAt')?new Date(String(form.get('saleEndsAt'))).toISOString():undefined,gate:form.get('gate')||undefined,section:form.get('section')||undefined};
     const response=await fetch(`${API_URL}/admin/tickets/products`,{method:'POST',credentials:'include',headers:headers(),body:JSON.stringify(payload)});
     const body=await response.json().catch(()=>({}));
     if(!response.ok){setError(Array.isArray(body.message)?body.message.join(', '):body.message||'Could not create ticket class');return}
-    setNotice('Ticket class created');e.currentTarget.reset();
+    setNotice('Ticket class created');element.reset();
   };
   const markPaid=async(e:FormEvent)=>{
     e.preventDefault();setError('');setNotice('');

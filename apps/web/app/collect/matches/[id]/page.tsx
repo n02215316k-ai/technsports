@@ -6,7 +6,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { submitOrQueue } from '@/lib/offline-queue';
 
-type Result={status:string;confidence?:number;agreeingSources?:number;observationId?:string;identityStatus?:string;playerId?:string;subjectId?:string;queued?:boolean;queueId?:string};
+type Result={status:string;confidence?:number;agreeingSources?:number;observationId?:string;identityStatus?:string;playerId?:string;subjectId?:string;queued?:boolean;queueId?:string;eventType?:string;team?:string;playerName?:string;createdAt?:number};
 type Participant={id:string;name:string;teamId:'home'|'away';shirtNumber?:number;position:string;source:string};
 type AuthUser={id:string;displayName:string;username:string;role:'SUPPORTER'|'COLLECTOR'|'REVIEWER'|'EDITOR'|'ADMIN'};
 type Fixture={id:string;status:string;homeScore:number;awayScore:number;round?:string;venueName?:string;venue?:{name:string};homeTeam:{name:string};awayTeam:{name:string};season:{label:string;competition:{name:string}}};
@@ -27,8 +27,10 @@ export default function CollectorConsole(){
   const [unlistedName,setUnlistedName]=useState('');
   const [participants,setParticipants]=useState<Participant[]>([]);
   const [result,setResult]=useState<Result|null>(null);
+  const [recent,setRecent]=useState<Result[]>([]);
   const [error,setError]=useState('');
   const [sending,setSending]=useState(false);
+  const [quickInFlight,setQuickInFlight]=useState(0);
   const [eventKey,setEventKey]=useState('goal-67-walter');
   const [method,setMethod]=useState('RIGHT_FOOT');
   const [distance,setDistance]=useState(18);
@@ -44,6 +46,7 @@ export default function CollectorConsole(){
   const [isPenalty,setIsPenalty]=useState(false);
   const [playerOn,setPlayerOn]=useState('takunda-benhura');
   const [playerOff,setPlayerOff]=useState('walter-musona');
+  const [touchPlayers,setTouchPlayers]=useState<{home:string;away:string}>({home:'',away:''});
 
   useEffect(()=>{
     fetch(`${api}/auth/me`,{credentials:'include'}).then(r=>r.json()).then(data=>setUser(data.user??null)).catch(()=>setUser(null));
@@ -52,15 +55,20 @@ export default function CollectorConsole(){
   },[api,id]);
 
   const teamPlayers=useMemo(()=>participants.filter(player=>player.teamId===team),[participants,team]);
+  const homePlayers=useMemo(()=>participants.filter(player=>player.teamId==='home'),[participants]);
+  const awayPlayers=useMemo(()=>participants.filter(player=>player.teamId==='away'),[participants]);
   const eventTypes=['GOAL','SHOT','TOUCH','FREE_KICK','CORNER','FOUL','PENALTY','YELLOW_CARD','RED_CARD','SUBSTITUTION','POSSESSION_INTERVAL','MATCH_ATTENDANCE'];
   const requiresPlayer=playerEvents.includes(eventType);
   const authorised=Boolean(user&&collectorRoles.includes(user.role));
   useEffect(()=>{if(!requiresPlayer)return;if(playerId&&teamPlayers.some(player=>player.id===playerId))return;setPlayerId(teamPlayers[0]?.id??'')},[requiresPlayer,playerId,teamPlayers]);
+  useEffect(()=>{setTouchPlayers(current=>({home:current.home&&homePlayers.some(player=>player.id===current.home)?current.home:homePlayers[0]?.id??'',away:current.away&&awayPlayers.some(player=>player.id===current.away)?current.away:awayPlayers[0]?.id??''}))},[homePlayers,awayPlayers]);
   const payloadFor=(type=eventType,teamValue=team)=>{const base={team:teamValue};switch(type){case'GOAL':return{...base,scoringMethod:method,distanceMeters:distance,isPenalty};case'SHOT':return{...base,scoringMethod:method,distanceMeters:distance,outcome};case'TOUCH':return{...base,x,y};case'FREE_KICK':return{...base,distanceMeters:distance,outcome};case'CORNER':return{...base,side};case'FOUL':return{...base,fouledPlayerId:fouledPlayer,foulType};case'PENALTY':return{...base,scoringMethod:'RIGHT_FOOT',outcome};case'SUBSTITUTION':return{...base,playerOnId:playerOn,playerOffId:playerOff};case'POSSESSION_INTERVAL':return{...base,durationSeconds:duration};case'MATCH_ATTENDANCE':return{attendance,source:attendanceSource};default:return base}};
   const firstPlayerForTeam=(teamValue:string)=>participants.find(player=>player.teamId===teamValue)?.id??'';
-  const submitObservation=async(options?:{eventType?:string;team?:string;playerId?:string;clientEventId?:string})=>{if(!user||!authorised){setError('Sign in with a collector account before submitting match data.');return}const type=options?.eventType??eventType,teamValue=options?.team??team,subjectPlayer=options?.playerId??playerId;const typeRequiresPlayer=playerEvents.includes(type);if(typeRequiresPlayer&&!subjectPlayer){setError('Choose a player before recording this event.');return}setSending(true);setError('');try{const identity=typeRequiresPlayer?(subjectPlayer==='__unlisted__'?{unlistedPlayerName:unlistedName,teamId:teamValue}:{playerId:subjectPlayer}):{};const response=await submitOrQueue(`${api}/matches/${id}/observations`,{contributorId:user.id,eventType:type,matchSecond:minute*60,payload:payloadFor(type,teamValue),clientEventId:options?.clientEventId??`${user.id}-${id}-${eventKey}`,...identity});setResult(response as Result)}catch(reason){setError(reason instanceof Error?reason.message:'Submission failed')}finally{setSending(false)}};
+  const playerName=(value?:string)=>participants.find(player=>player.id===value)?.name;
+  const pushRecent=(item:Result)=>setRecent(current=>[item,...current].slice(0,8));
+  const submitObservation=async(options?:{eventType?:string;team?:string;playerId?:string;clientEventId?:string;quick?:boolean})=>{if(!user||!authorised){setError('Sign in with a collector account before submitting match data.');return}const type=options?.eventType??eventType,teamValue=options?.team??team,subjectPlayer=options?.playerId??playerId;const typeRequiresPlayer=playerEvents.includes(type);if(typeRequiresPlayer&&!subjectPlayer){setError('Choose a player before recording this event.');return}if(options?.quick)setQuickInFlight(count=>count+1);else setSending(true);setError('');const pending:Result={status:'SENDING',eventType:type,team:teamValue,playerName:playerName(subjectPlayer),createdAt:Date.now()};setResult(pending);pushRecent(pending);try{const identity=typeRequiresPlayer?(subjectPlayer==='__unlisted__'?{unlistedPlayerName:unlistedName,teamId:teamValue}:{playerId:subjectPlayer}):{};const response=await submitOrQueue(`${api}/matches/${id}/observations`,{contributorId:user.id,eventType:type,matchSecond:minute*60,payload:payloadFor(type,teamValue),clientEventId:options?.clientEventId??`${user.id}-${id}-${eventKey}`,...identity});const complete={...(response as Result),eventType:type,team:teamValue,playerName:playerName(subjectPlayer),createdAt:Date.now()};setResult(complete);pushRecent(complete)}catch(reason){const failed:Result={status:'FAILED',eventType:type,team:teamValue,playerName:playerName(subjectPlayer),createdAt:Date.now()};setResult(failed);pushRecent(failed);setError(reason instanceof Error?reason.message:'Submission failed')}finally{if(options?.quick)setQuickInFlight(count=>Math.max(0,count-1));else setSending(false)}};
   const submit=async(e:FormEvent)=>{e.preventDefault();await submitObservation()};
-  const quickSubmit=(type:string,teamValue=team)=>{const subject=playerEvents.includes(type)?(teamValue===team&&playerId?playerId:firstPlayerForTeam(teamValue)):undefined;setEventType(type);setTeam(teamValue);if(subject)setPlayerId(subject);void submitObservation({eventType:type,team:teamValue,playerId:subject,clientEventId:`${user?.id??'collector'}-${id}-${type}-${teamValue}-${subject??'team'}-${Date.now()}`})};
+  const quickSubmit=(type:string,teamValue=team,subjectOverride?:string)=>{const subject=playerEvents.includes(type)?(subjectOverride??(type==='TOUCH'?touchPlayers[teamValue as 'home'|'away']:(teamValue===team&&playerId?playerId:firstPlayerForTeam(teamValue)))):undefined;setEventType(type);setTeam(teamValue);if(subject)setPlayerId(subject);void submitObservation({eventType:type,team:teamValue,playerId:subject,quick:true,clientEventId:`${user?.id??'collector'}-${id}-${type}-${teamValue}-${subject??'team'}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`})};
   const playerOptions=(value:string,setter:(value:string)=>void,label:string)=><label>{label}<select value={value} onChange={e=>setter(e.target.value)}>{teamPlayers.map(player=><option key={player.id} value={player.id}>{player.name}</option>)}</select></label>;
 
   return <main className="page-shell collector-shell">
@@ -92,10 +100,18 @@ export default function CollectorConsole(){
         <div className="team-tap-grid"><button type="button" className={team==='home'?'on home':''} onClick={()=>setTeam('home')}>{home}</button><button type="button" className={team==='away'?'on away':''} onClick={()=>setTeam('away')}>{away}</button></div>
       </div>}
       <div className="quick-capture wide">
-        <button type="button" onClick={()=>quickSubmit('TOUCH','home')} disabled={sending||!authorised}>+ Touch {home}</button>
-        <button type="button" onClick={()=>quickSubmit('TOUCH','away')} disabled={sending||!authorised}>+ Touch {away}</button>
-        <button type="button" onClick={()=>quickSubmit('SHOT',team)} disabled={sending||!authorised}>+ Shot selected team</button>
-        <button type="button" onClick={()=>quickSubmit('FOUL',team)} disabled={sending||!authorised}>+ Foul selected team</button>
+        <button type="button" onClick={()=>quickSubmit('TOUCH','home')} disabled={!authorised||!touchPlayers.home}>+ Touch {home}</button>
+        <button type="button" onClick={()=>quickSubmit('TOUCH','away')} disabled={!authorised||!touchPlayers.away}>+ Touch {away}</button>
+        <button type="button" onClick={()=>quickSubmit('SHOT',team)} disabled={!authorised}>+ Shot selected team</button>
+        <button type="button" onClick={()=>quickSubmit('FOUL',team)} disabled={!authorised}>+ Foul selected team</button>
+      </div>
+      <div className="tap-panel touch-player-panel wide">
+        <span>TOUCH PLAYER SELECTOR</span>
+        <div className="touch-team-columns">
+          <TouchPicker label={home} team="home" players={homePlayers} value={touchPlayers.home} onChange={value=>setTouchPlayers(current=>({...current,home:value}))} onTap={value=>quickSubmit('TOUCH','home',value)}/>
+          <TouchPicker label={away} team="away" players={awayPlayers} value={touchPlayers.away} onChange={value=>setTouchPlayers(current=>({...current,away:value}))} onTap={value=>quickSubmit('TOUCH','away',value)}/>
+        </div>
+        <small>Choose the player, then tap repeatedly. Each tap records a separate TOUCH event for that player and team.</small>
       </div>
       {requiresPlayer&&<div className="tap-panel wide">
         <span>PLAYER TAP TARGETS</span>
@@ -119,6 +135,10 @@ export default function CollectorConsole(){
       <label className="wide">Event reference<input required value={eventKey} onChange={e=>setEventKey(e.target.value)}/><small>Use the same reference when another collector reports this exact event.</small></label>
       <button className="primary" disabled={sending||!authorised} type="submit"><Send/>{sending?'Submitting…':'Submit observation'}</button>
     </form>
-    <aside className="submission-result"><ShieldCheck/><h2>Verification</h2><small className="result-match">{home} vs {away} · {minute}&apos;</small>{!result&&!error&&<p>The verification state will appear after submission.</p>}{error&&<div className="result-error"><b>Submission failed</b><span>{error}</span></div>}{result?.queued&&<div className="result-status queued"><span><WifiOff/>QUEUED OFFLINE</span><p>Saved on this device. It will submit automatically when connectivity returns.</p></div>}{result&&!result.queued&&<div className={`result-status ${result.status.toLowerCase()}`}><span>{result.status==='CONSENSUS'?<CheckCircle2/>:<Radio/>}{result.status}</span><dl><div><dt>Match</dt><dd>{id}</dd></div><div><dt>Collector</dt><dd>@{user?.username}</dd></div><div><dt>Subject</dt><dd>{result.playerId??result.subjectId}</dd></div><div><dt>Identity</dt><dd>{result.identityStatus??'—'}</dd></div><div><dt>Sources</dt><dd>{result.agreeingSources??'—'}</dd></div><div><dt>Confidence</dt><dd>{result.confidence?`${Math.round(result.confidence*100)}%`:'—'}</dd></div></dl></div>}</aside></div>
+    <aside className="submission-result"><ShieldCheck/><h2>Verification</h2><small className="result-match">{home} vs {away} · {minute}&apos;{quickInFlight?` · ${quickInFlight} sending`:''}</small>{!result&&!error&&<p>The verification state will appear after submission.</p>}{error&&<div className="result-error"><b>Submission failed</b><span>{error}</span></div>}{result?.queued&&<div className="result-status queued"><span><WifiOff/>QUEUED OFFLINE</span><p>Saved on this device. It will submit automatically when connectivity returns.</p></div>}{result&&!result.queued&&<div className={`result-status ${result.status.toLowerCase()}`}><span>{result.status==='CONSENSUS'?<CheckCircle2/>:<Radio/>}{result.status}</span><dl><div><dt>Event</dt><dd>{result.eventType??eventType}</dd></div><div><dt>Team</dt><dd>{result.team==='home'?home:result.team==='away'?away:result.team??'—'}</dd></div><div><dt>Player</dt><dd>{result.playerName??'—'}</dd></div><div><dt>Subject</dt><dd>{result.playerId??result.subjectId??'—'}</dd></div><div><dt>Identity</dt><dd>{result.identityStatus??'—'}</dd></div><div><dt>Sources</dt><dd>{result.agreeingSources??'—'}</dd></div><div><dt>Confidence</dt><dd>{result.confidence?`${Math.round(result.confidence*100)}%`:'—'}</dd></div></dl></div>}<div className="recent-taps"><h3>Recent capture</h3>{recent.map((item,index)=><div key={`${item.createdAt}-${index}`}><b>{item.eventType}</b><span>{item.team==='home'?home:item.team==='away'?away:item.team} · {item.playerName??item.subjectId??'team'}</span><em>{item.queued?'QUEUED':item.status}</em></div>)}{!recent.length&&<p>No taps yet.</p>}</div></aside></div>
   </main>;
+}
+
+function TouchPicker({label,team,players,value,onChange,onTap}:{label:string;team:'home'|'away';players:Participant[];value:string;onChange:(value:string)=>void;onTap:(value:string)=>void}){
+  return <section className={`touch-picker ${team}`}><header><b>{label}</b><button type="button" disabled={!value} onClick={()=>value&&onTap(value)}>Tap selected touch</button></header><div>{players.map(player=><button type="button" className={value===player.id?'on':''} onClick={()=>onChange(player.id)} key={player.id}>{player.shirtNumber&&<small>{player.shirtNumber}</small>}<span>{player.name}</span></button>)}</div>{!players.length&&<p>No player candidates yet.</p>}</section>;
 }
